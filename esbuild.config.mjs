@@ -40,15 +40,9 @@ let buildConfig = {
   if (isServe) {
     console.log("Starting development server...");
 
-    // Watch and Serve Mode
     const ctx = await esbuild.context(buildConfig);
 
     await ctx.watch();
-    const { host, port } = await ctx.serve({
-      servedir: ".",
-      port: 3000,
-    });
-
   } else {
     console.log("Building for production...");
     await esbuild.build(buildConfig);

@@ -1,7 +1,8 @@
 {
+  "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
     "target": "es2016",
-    "module": "commonjs",
+    "module": "es2020",
     "moduleResolution": "node",
     "resolveJsonModule": true,
     "allowJs": true,
@@ -10,7 +11,13 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "strict": true,
+    "typeRoots": ["./types"],
     "types": ["acode-plugin-types"],
+    "skipLibCheck": true,
+    "lib": ["ES2017"],
+    "paths": {
+        "@/linters/*": ["./src/ace-linters/src/*"]
+    }
   },
   "exclude": ["./dist/**/*"],
 }

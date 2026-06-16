@@ -1,6 +1,6 @@
 {
   "$schema": "https://acode.app/schema/plugin/v0.1.0.json",
-  "id": "acode.plugin",
+  "id": "acode.ryu.lsp",
   "name": "Plugin",
   "main": "main.js",
   "version": "1.0.0",
