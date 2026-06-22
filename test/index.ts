@@ -1,11 +1,8 @@
-const a = "Ryu"
-
-function b() {
-    const a = "Airi";
+function contoh(): [string, () => string] {
+    const hello = "hai"
+    const fn = () => hello
     
-    function c() {
-        const a = "Thalarix"
-        
-        a
-    }
+    return [hello, fn];
 }
+
+const [] = contoh()

@@ -1,6 +1,41 @@
+import plugin from "../plugin.json"
+
 const urlModule = acode.require("url");
 const openFolder = acode.require("openFolder");
 const EditorFile = acode.require("editorfile") as any;
+const settings = acode.require("settings");
+
+export interface PluginSettings {
+	socketUrl: string,
+	debug: boolean,
+	shortcut: {
+		startLSP: string,
+		format: string,
+		devTest: string
+	}
+}
+
+export function getPluginSettings(): PluginSettings {
+	return settings.value[plugin.id];
+}
+
+export function setPluginSettings(pluginSettings: (settings: PluginSettings) => Partial<PluginSettings>): void {
+	settings.value[plugin.id] = {
+		...settings.value[plugin.id], ...pluginSettings(settings.value[plugin.id])
+	}
+	settings.update();
+}
+
+export function log(type: "error" | "info" | "warn", ...message: any) {
+	if (getPluginSettings().debug && typeof console[type] === "function") {
+	    const debugName = "[LSP]:"
+	    
+		setTimeout(() => console[type]?.(debugName, ...message), 200);
+	}
+}
+export function showToast(...message: any) {
+	window.toast(message.filter(Boolean).join(" "), 1000);
+}
 
 export function normalizePath(path: string, prefix?: "file" | "content") {
 	let normalized = urlModule.pathname(path);

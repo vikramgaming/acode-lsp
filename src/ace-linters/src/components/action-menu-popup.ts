@@ -1,6 +1,6 @@
-import {Ace} from "ace-code";
-import {AcePopup} from "../ace/acePopup";
-import {popupManager} from "../ace/popupManager";
+import { Ace } from "ace-code";
+import { AcePopup } from "../ace/acePopup";
+import { popupManager } from "../ace/popupManager";
 
 export type ActionMenuItem<T> = {
     label: string;
@@ -76,7 +76,7 @@ export class ActionMenuPopup<T> {
             return;
         }
         this.anchorEl = anchor ?? null;
-        this.popup.show({top: y, left: x}, this.lineHeight, topdownOnly);
+        this.popup.show({ top: y, left: x }, this.lineHeight, topdownOnly);
         this.popupManagerRef.addAcePopup(this.popup);
         this.isOpenState = true;
         window.addEventListener("mousedown", this.onWindowMouseDown, true);

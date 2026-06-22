@@ -14,14 +14,10 @@ declare namespace Acode {
 		(
 			message: string,
 			defaultValue: string,
-			type: "number" | "tel", // TODO: verify
-			options: PromptOptions<number>,
-		): Promise<number | null>;
+		): Promise<string | null>;
 		(
 			message: string,
 			defaultValue: string,
-			type: PromptType,
-			options: PromptOptions<string>,
 		): Promise<string | null>;
 	}
 

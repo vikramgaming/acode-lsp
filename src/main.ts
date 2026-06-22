@@ -4,38 +4,34 @@ import { LanguageClient } from "./ace-linters/src/services/language-client";
 import {
 	getActiveFolderPath,
 	getCurrentFilePath,
-	normalizeShortcutKeys
+	normalizeShortcutKeys,
+	getPluginSettings,
+	setPluginSettings,
+	PluginSettings,
+	log,
+	showToast
 } from "./utils";
 import lspMethod from "./method"
 
 const settings = acode.require("settings");
-const multiPrompt = acode.require("multiPrompt");
 const confirm = acode.require("confirm");
 const select = acode.require("select");
+const multiPrompt = acode.require("multiPrompt");
+const selectionMenu = acode.require("selectionMenu");
 
 import type { LanguageClientConfig } from "./ace-linters/src/types/language-service";
 import type { LanguageProvider } from "./ace-linters/src/language-provider";
 import type { EditSession } from "ace-code/src/edit_session";
 
+type Method = Parameters<typeof lspMethod>[0]
 export interface Session extends EditSession {
 	$modeId: string
 }
-
-interface PluginSettings {
-	socketUrl: string,
-	debug: boolean,
-	shortcut: {
-		startLSP: string,
-		format: string,
-		devTest: string
-	}
-}
-
 interface SocketClients {
 	modes: string[],
 	serviceName: string,
 	args: string[],
-	features: LanguageClientConfig["features"]
+	features: LanguageClientConfig["features"],
 }
 
 const socketClients = {
@@ -43,7 +39,7 @@ const socketClients = {
 		modes: ["javascript", "typescript", "jsx", "tsx"],
 		serviceName: "typescript",
 		args: ["typescript-language-server", "--stdio"],
-		features: {}
+		features: {},
 	},
 	css: {
 		modes: ["css", "scss", "less"],
@@ -51,15 +47,16 @@ const socketClients = {
 		args: ["vscode-css-language-server", "--stdio"],
 		features: {
 			signatureHelp: false
-		}
+		},
 	},
 	html: {
 		modes: ["html"],
 		serviceName: "html",
 		args: ["vscode-html-language-server", "--stdio"],
 		features: {
-			signatureHelp: false
-		}
+			signatureHelp: false,
+			documentHighlight: false
+		},
 	},
 	json: {
 		modes: ["json", "json5"],
@@ -67,13 +64,11 @@ const socketClients = {
 		args: ["vscode-json-language-server", "--stdio"],
 		features: {
 			signatureHelp: false
-		}
+		},
 	}
 } satisfies Record<string, SocketClients>
 
 class LSP {
-	debugName = "[LSP]:"
-
 	baseUrl: string | undefined;
 	client: LanguageProvider | null = null;
 	socket: Record<string, WebSocket> = {};
@@ -98,25 +93,8 @@ class LSP {
 			settings.update();
 		}
 	}
-	log(type: "error" | "info" | "warn", ...message: any) {
-		if (this.getPluginSettings().debug && typeof console[type] === "function") {
-			setTimeout(() => console[type]?.(this.debugName, ...message), 200);
-		}
-	}
-	showToast(...message: any) {
-		window.toast(message.filter(Boolean).join(" "), 1000);
-	}
-	getPluginSettings(): PluginSettings {
-		return settings.value[plugin.id];
-	}
-	setPluginSettings(pluginSettings: (settings: PluginSettings) => Partial<PluginSettings>): void {
-		settings.value[plugin.id] = {
-			...settings.value[plugin.id], ...pluginSettings(settings.value[plugin.id])
-		}
-		settings.update();
-	}
 	createLSP(workspacePath: string) {
-		const { socketUrl } = this.getPluginSettings();
+		const { socketUrl } = getPluginSettings();
 
 		const serverConfig: LanguageClientConfig[] = [];
 		
@@ -137,8 +115,9 @@ class LSP {
 			serverConfig.push(result);
 		}
 			
-		this.log("info", "Initialize LSP", serverConfig);
-		this.log("info", "socket", this.socket)
+		log("info", "Initialize LSP", serverConfig);
+		log("info", "socket", this.socket);
+		log("info", "registered language service name", [...this.registeredLanguage.entries()])
 
 		this.currentWorkspace = workspacePath
 
@@ -146,22 +125,21 @@ class LSP {
 			manualSessionControl: true,
 			workspacePath,
 			functionality: {
-			    completion: {
-			        overwriteCompleters: true
-			    }
+			    codeActions: false,
+			    inlineCompletion: false,
 			}
 		});
 	}
 	startLSP(workspacePath: string) {
 		if (this.client) {
-			this.log("warn", "LSP already running");
+			log("warn", "LSP already running");
 			return;
 		}
-		this.log("info", "workspacePath :", workspacePath);
+		log("info", "workspacePath :", workspacePath);
 
 		this.client = this.createLSP(workspacePath);
 
-		this.log("info", "Client", this.client);
+		log("info", "Client", this.client);
 
 		const editor = editorManager.editor;
 		this.client.registerEditor(editor, {
@@ -173,7 +151,7 @@ class LSP {
 	stopLSP() {
 		if (!this.client) return;
 		
-		this.log("info", "Stopping LSP");
+		log("info", "LSP Stopped");
 
 		for (const id in this.socket) {
 			this.socket[id].close();
@@ -199,11 +177,11 @@ class LSP {
 					filePath: getCurrentFilePath(),
 					joinWorkspaceURI: true
 				});
-				this.log("info", "switching to file", session);
+				log("info", "switching to file", session);
 			}
 			if (this.registeredLanguage.has(modeId.OLD)) {
 				this.client.closeDocument(oldSession, () => {
-					this.log("info", "closing file", oldSession)
+					log("info", "closing file", oldSession)
 				})
 			}
 		} else {
@@ -233,32 +211,57 @@ class LSP {
 		    })
 		}
 		
-		acode.registerFormatter(plugin.id, languageFormatter, () => {
-			if (!this.client) return this.showToast("start LSP first");
+		selectionMenu.add(async () => {
+            if (!this.client) return showToast("Start LSP first");
+            const mode = (editorManager.editor.session as Session).$modeId.replace("ace/mode/", "");
+            const serviceName = this.registeredLanguage.get(mode);
+            if (!serviceName) return showToast("This file extension not supported");
+            
+            let options: (Acode.SelectItem & {
+                value: Method
+            })[] = [
+                { text: "Go To Document Link", value: "goToDocumentLink" },
+                { text: "Go To Definition", value: "goToDefinition" },
+                { text: "Go To Declaration", value: "goToDeclaration" },
+                { text: "Go To TypeDefinition", value: "goToTypeDefinition" },
+                { text: "Go To Implementation", value: "goToImplementation" },
+                { text: "Find References", value: "findReferences" },
+                { text: "Show Code Actions", value: "codeActions" },
+                { text: "Rename Symbol", value: "renameSymbol" },
+            ]
+            
+            const input: Method = await select("Select Command", options);
+            if (input) {
+                lspMethod(input, this.client, serviceName);
+            }
+        }, "TS", "selected");
+		
+		acode.registerFormatter(plugin.id, languageFormatter, async () => {
+			if (!this.client) return showToast("start LSP first");
 
 			this.client.format()
 		})
-		this.log("info", "Registered Formatter for language", languageFormatter);
+		log("info", "Registered Formatter for language", languageFormatter);
 	}
 	initAllCommands() {
 	    const shortcutKeys: Record<string, ReturnType<typeof normalizeShortcutKeys>> = {};
-	    for (let [name, key] of Object.entries(this.getPluginSettings().shortcut)) {
+	    for (let [name, key] of Object.entries(getPluginSettings().shortcut)) {
 	        shortcutKeys[name] = normalizeShortcutKeys(key);
 	    }
-	    this.log("info", "shortcutKeys:", shortcutKeys)
+	    log("info", "shortcutKeys:", shortcutKeys)
 	    
 		editorManager.editor.commands.addCommand({
 			name: "LSP Init",
 			bindKey: shortcutKeys.startLSP,
 			exec: () => {
 			    if (this.client) {
-				    return this.log("warn", "LSP already started");
+				    return showToast("LSP already started");
 				}
 				
 				const folder = getActiveFolderPath();
 				if (!folder) {
-				    this.log("error", "Cannot find the workspace, Please open a folder first");
-				    return this.showToast("Please open a folder first");
+				    log("error", "Cannot find the workspace, Please open a folder first");
+				    return showToast("Please open a folder first");
 				}
 				multiPrompt("Start Websocket LSP?", [
 					{
@@ -281,8 +284,8 @@ class LSP {
 			bindKey: shortcutKeys.format,
 			exec: () => {
 				if (!this.client) {
-				    this.log("error", "Cannot find the client");
-				    return this.showToast("Start LSP first");
+				    log("error", "Cannot find the client");
+				    return showToast("Start LSP first");
 				}
 			    this.client.format();
 			}
@@ -291,20 +294,9 @@ class LSP {
 	        name: "LSP Dev Test",
 	        bindKey: shortcutKeys.devTest,
 	        exec: async () => {
-	            if (!this.getPluginSettings().debug) return;
-	            if (!this.client) return this.showToast("Start LSP first");
-	            
-	            const input = await select("Select Command", [
-	                { text: "Go To Definition", value: "Method-goToDefinition" },
-	                { text: "Go To Declaration", value: "Method-goToDeclaration" },
-	                { text: "Go To TypeDefinition", value: "Method-goToTypeDefinition" },
-	                { text: "Go To Implementation", value: "Method-goToImplementation" },
-                ]);
-                if (input.startsWith("Method-")) {
-                    lspMethod(input.replace("Method-", ""), this.client, this.registeredLanguage, this.log.bind(this));
-                }
-	        }
-	    })
+	            if (!getPluginSettings().debug) return;
+            }
+        })
 	}
 	removeAllCommands() {
 	    editorManager.editor.commands.removeCommand("LSP Init");
@@ -321,7 +313,7 @@ class LSP {
 		settings.update();
 	}
 	settings(): Acode.PluginSettings {
-	    const shortcut = this.getPluginSettings().shortcut;
+	    const shortcut = getPluginSettings().shortcut;
 	    
 		return {
 			list: [
@@ -353,7 +345,7 @@ class LSP {
 			],
 			cb: (key: string, value) => {
 			    if (key === "stopLSP") {
-			        if (!this.client) this.showToast("LSP has not been activated");
+			        if (!this.client) showToast("LSP has not been activated");
 			    	confirm("Stop LSP", "Are you sure?").then(i => {
 			    	    if (i) {
 			    	        this[key]();
@@ -361,7 +353,7 @@ class LSP {
 			    	});
 			    } else if (key.startsWith("shortcut.")) {
 			    	const shortcut = key.split(".")[1];
-			    	this.setPluginSettings((settings): Partial<PluginSettings> => {
+			    	setPluginSettings((settings): Partial<PluginSettings> => {
 			    		return {
 			    			shortcut: {
 			    				...settings.shortcut,

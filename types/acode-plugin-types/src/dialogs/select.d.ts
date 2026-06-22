@@ -10,14 +10,14 @@ declare namespace Acode {
 			title: string,
 			items: SelectItems,
 			options?: boolean | SelectOptions,
-		): Promise<string>;
+		): Promise<any>;
 	}
 
 	type SelectItems = string[] | (string | boolean | null)[][] | SelectItem[];
 
 	interface SelectItem {
 		/** Unique identifier returned when selected */
-		value: string;
+		value: any;
 
 		/** Display text shown to the user */
 		text: string;

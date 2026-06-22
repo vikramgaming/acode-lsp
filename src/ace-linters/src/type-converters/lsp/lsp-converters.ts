@@ -103,7 +103,7 @@ export function fromAnnotations(annotations: Ace.Annotation[]): Diagnostic[] {
 }
 
 export function toCompletion(item: CompletionItem) {
-    let itemKind = item.kind;
+    let itemKind = item?.kind;
     let kind = itemKind ? Object.keys(CompletionItemKind)[Object.values(CompletionItemKind).indexOf(itemKind)] : undefined;
     let text = item.textEdit?.newText ?? item.insertText ?? item.label;
 
@@ -133,7 +133,7 @@ export function toCompletion(item: CompletionItem) {
     let completion = {
         meta: kind,
         caption: item.label,
-        score: undefined
+        score: kind === "Text" ? 0 : (kind === "Keyword" ? 1000 : 9999)
     };
 
     completion["command"] = command;

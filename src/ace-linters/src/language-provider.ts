@@ -524,6 +524,20 @@ export class LanguageProvider {
         this.$editorEventHandlers[editor.id].changeSelectionForCodeActions = changeSelectionForCodeActions;
         editor.on("changeSelection", changeSelectionForCodeActions);
     }
+    getCodeActions(callback: (codeActions: CodeActionsByService[]) => void) {
+        const editor = this.activeEditor;
+        if (!this.$getSessionLanguageProvider(editor.session)) {
+            return;
+        }
+    
+        //TODO: no need to send request on empty
+        let selection = editor.getSelection().getRange();
+        let cursor = editor.getCursorPosition();
+        let diagnostics = fromAnnotations(editor.session.getAnnotations().filter((el) => el.row === cursor.row));
+        this.$messageController.getCodeActions(this.$getFileName(editor.session), fromRange(selection), {diagnostics}, (codeActions) => {
+            callback(codeActions);
+        });
+    }
 
     private $initHoverTooltip(editor) {
         const Range = editor.getSelectionRange().constructor;
@@ -737,7 +751,6 @@ export class LanguageProvider {
                             completions.forEach((item) => {
                                 item.completerId = completer.id;
                                 item["fileName"] = fileName;
-                                item.score = item.meta === "Text" ? 0 : item.meta === "Keyword" ? 1000 : 9999;
                             });
                             // console.log(completions);
 
