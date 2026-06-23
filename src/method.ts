@@ -44,14 +44,17 @@ const method = {
             const data = await reponse;
             log("info", "Method Document Link", data);
             for (let location of data) {
-                if (location.target.startsWith("http")) continue;
                 if (
                     selectionRange.end.character <= location.range.end.character &&
                     selectionRange.end.line <= location.range.end.line &&
                     selectionRange.start.character >= location.range.start.character &&
                     selectionRange.start.line >= location.range.start.line
                 ) {
-                    goToFile(location.target, { column: 0, row: 0 });
+                    if (location.target.startsWith("http")) {
+                        acode.exec("open-inapp-browser", location.target);
+                    } else {
+                        goToFile(location.target, { column: 0, row: 0 });
+                    }
                     break;
                 }
             }

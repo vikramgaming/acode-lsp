@@ -234,7 +234,7 @@ class LSP {
             if (input) {
                 lspMethod(input, this.client, serviceName);
             }
-        }, "TS", "selected");
+        }, "LSP", "selected");
 		
 		acode.registerFormatter(plugin.id, languageFormatter, async () => {
 			if (!this.client) return showToast("start LSP first");
@@ -313,13 +313,18 @@ class LSP {
 		settings.update();
 	}
 	settings(): Acode.PluginSettings {
-	    const shortcut = getPluginSettings().shortcut;
+	    const { shortcut, ...pluginSettings } = getPluginSettings();
 	    
 		return {
 			list: [
 				{
 					text: "Stop LSP",
-					key: "stopLSP"
+					key: "stopLSP",
+				},
+				{
+					text: "Debug mode",
+					key: "debug",
+					checkbox: pluginSettings.debug
 				},
 				{
 					text: "Start LSP Shortcut",
@@ -342,25 +347,40 @@ class LSP {
 					promptType: "text",
 					prompt: "Insert new key shortcut"
 				},
+				{
+					text: "Socket Url",
+					key: "socketUrl",
+					value: pluginSettings.socketUrl,
+					promptType: "text",
+					prompt: "Insert new Socket URL"
+				},
 			],
 			cb: (key: string, value) => {
 			    if (key === "stopLSP") {
-			        if (!this.client) showToast("LSP has not been activated");
+			        if (!this.client) return showToast("LSP not activated");
 			    	confirm("Stop LSP", "Are you sure?").then(i => {
 			    	    if (i) {
 			    	        this[key]();
 			    	    }
 			    	});
 			    } else if (key.startsWith("shortcut.")) {
-			    	const shortcut = key.split(".")[1];
+			    	const shortcut = key.replace("shortcut.", "");
 			    	setPluginSettings((settings): Partial<PluginSettings> => {
 			    		return {
 			    			shortcut: {
 			    				...settings.shortcut,
-			    				[shortcut]: value as string
+			    				[shortcut]: value
 			    			}
 			    		}
 			    	})
+			    } else {
+			        setPluginSettings(() => {
+			            return {
+			                [key]: value as string
+			            }
+			        });
+			        this.removeAllCommands();
+			        this.initAllCommands();
 			    }
 			},
 		}
