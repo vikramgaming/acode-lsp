@@ -373,14 +373,14 @@ class LSP {
 			    			}
 			    		}
 			    	})
+			        this.removeAllCommands();
+			        this.initAllCommands();
 			    } else {
 			        setPluginSettings(() => {
 			            return {
 			                [key]: value as string
 			            }
 			        });
-			        this.removeAllCommands();
-			        this.initAllCommands();
 			    }
 			},
 		}
