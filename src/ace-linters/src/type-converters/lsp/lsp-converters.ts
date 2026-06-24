@@ -135,6 +135,15 @@ export function toCompletion(item: CompletionItem) {
         caption: item.label,
         score: kind === "Text" ? 0 : (kind === "Keyword" ? 1000 : 9999)
     };
+    
+    if (kind === "File") {
+        const helpers = acode.require("helpers");
+        completion["icon"] = helpers.getIconForFile(
+            (/\./.test(item.label) ? item.label : item.label + editorManager.activeFile.name.slice(editorManager.activeFile.name.lastIndexOf(".")))
+        );
+    } else if (kind === "Folder") {
+        completion["icon"] = "icon folder";
+    }
 
     completion["command"] = command;
     completion["range"] = range;

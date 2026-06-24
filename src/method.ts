@@ -4,6 +4,7 @@ import { fromRange, toPoint } from "./ace-linters/src/type-converters/lsp/lsp-co
 const select = acode.require("select");
 const prompt = acode.require("prompt");
 const Range = ace.require("ace/range").Range;
+const helpers = acode.require("helpers");
 
 import type { LanguageProvider } from "./ace-linters/src/language-provider";
 
@@ -50,10 +51,10 @@ const method = {
                     selectionRange.start.character >= location.range.start.character &&
                     selectionRange.start.line >= location.range.start.line
                 ) {
-                    if (location.target.startsWith("http")) {
-                        acode.exec("open-inapp-browser", location.target);
-                    } else {
+                    if (location.target.startsWith("file:")) {
                         goToFile(location.target, { column: 0, row: 0 });
+                    } else {
+                        acode.exec("open-inapp-browser", location.target);
                     }
                     break;
                 }
@@ -147,19 +148,12 @@ async function goToLocation(methodName: string, client: LanguageProvider, servic
 
             const options = data.map((location) => {
                 if (!location.uri.startsWith(client.workspaceUri)) return null;
-                let nUri = location.uri.replace(client.workspaceUri, "");
-                const pos = `[${location.range.start.line + 1}, ${location.range.start.character}]: `
-
-                if ((nUri.length + pos.length) > 30) {
-                    nUri = "..." + nUri.slice(-27 + pos.length);
-                }
-
-                const mode = (nUri.split(".").pop() as string)
-                const modeName = mode === "js" ? "javascript" : (mode === "ts" ? "typescript" : mode)
+                const pos = `[${location.range.start.line + 1}, ${location.range.start.character}]`
+                const fileName = location.uri.split("/").pop()!;
 
                 return {
-                    text: pos + nUri,
-                    icon: `icon file file_type_default file_type_${modeName} file_type_${mode}`,
+                    text: `${pos}: ${fileName}`,
+                    icon: helpers.getIconForFile(fileName),
                     value: location as any
                 }
             }).filter(loc => loc != null);

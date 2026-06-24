@@ -1,7 +1,7 @@
 const urlModule = acode.require("url");
 const openFolder = acode.require("openFolder");
 
-function normalizePath(path: string, prefix?: "file" | "content") {
+function normalizePath(path, prefix) {
 	let normalized = urlModule.pathname(path);
 	normalized = normalized.replace(/^\/+/, '/');
 	
