@@ -32,6 +32,7 @@ interface SocketClients {
 	serviceName: string,
 	args: string[],
 	features: LanguageClientConfig["features"],
+	extension: string[]
 }
 
 const socketClients = {
@@ -40,6 +41,7 @@ const socketClients = {
 		serviceName: "typescript",
 		args: ["typescript-language-server", "--stdio"],
 		features: {},
+		extension: ["js", "ts", "jsx", "tsx"],
 	},
 	css: {
 		modes: ["css", "scss", "less"],
@@ -48,6 +50,7 @@ const socketClients = {
 		features: {
 			signatureHelp: false
 		},
+		extension: ["css", "scss", "less"],
 	},
 	html: {
 		modes: ["html"],
@@ -57,6 +60,7 @@ const socketClients = {
 			signatureHelp: false,
 			documentHighlight: false
 		},
+		extension: ["html"],
 	},
 	json: {
 		modes: ["json", "json5"],
@@ -65,6 +69,7 @@ const socketClients = {
 		features: {
 			signatureHelp: false
 		},
+		extension: ["json", "json5"],
 	}
 } satisfies Record<string, SocketClients>
 
@@ -99,7 +104,19 @@ class LSP {
 		const serverConfig: LanguageClientConfig[] = [];
 		
 		for (const [id, config] of Object.entries(socketClients)) {
-			const socket = new WebSocket(`${socketUrl.replace(/\/?$/, "/")}${config.serviceName}-${workspacePath}?args=${config.args.join(",")}&type=stdio`)
+		    const url = `${socketUrl.replace(/\/?$/, "/")}${config.serviceName}-${workspacePath}?args=${config.args.join(",")}&type=stdio`
+			const socket = new WebSocket(url);
+			socket.onopen = () => {
+			    log("info", `Socket Connected for "${config.serviceName}" to: ${url}`);
+			};
+			socket.onclose = (e) => {
+			    log("warn", `Socket closed for ${config.serviceName}`, e);
+			    this.stopLSP();
+			};
+			socket.onerror = (e) => {
+			    log("warn", `Socket unexpected error for ${config.serviceName}`, e);
+			    this.stopLSP();
+			};
 			this.socket[id] = socket;
 			
 			config.modes.forEach(mode => this.registeredLanguage.set(mode.toLowerCase(), config.serviceName));
@@ -117,7 +134,14 @@ class LSP {
 			
 		log("info", "Initialize LSP", serverConfig);
 		log("info", "socket", this.socket);
-		log("info", "registered language service name", [...this.registeredLanguage.entries()])
+		const registeredLanguage: Record<string, string[]> = {};
+        for (let [lang, serviceName] of this.registeredLanguage.entries()) {
+            if (!registeredLanguage[serviceName]) {
+                registeredLanguage[serviceName] = [];
+            }
+            registeredLanguage[serviceName].push(lang);
+        }
+		log("info", "registered language service name", registeredLanguage)
 
 		this.currentWorkspace = workspacePath
 
@@ -135,7 +159,7 @@ class LSP {
 			log("warn", "LSP already running");
 			return;
 		}
-		log("info", "workspacePath :", workspacePath);
+		log("info", "Initializing for WorkspacePath :", workspacePath);
 
 		this.client = this.createLSP(workspacePath);
 
@@ -151,7 +175,6 @@ class LSP {
 	stopLSP() {
 		if (!this.client) return;
 		
-		log("info", "LSP Stopped");
 
 		for (const id in this.socket) {
 			this.socket[id].close();
@@ -161,6 +184,7 @@ class LSP {
 		this.client?.closeConnection?.();
 		this.client = null;
 		this.registeredLanguage.clear();
+		log("info", "LSP Stopped");
 	}
 	switchFile({ oldSession, session }: { oldSession: EditSession, session: EditSession }) {
 		if (!this.client) return
@@ -177,11 +201,11 @@ class LSP {
 					filePath: getCurrentFilePath(),
 					joinWorkspaceURI: true
 				});
-				log("info", "switching to file", session);
+				log("info", "Switched to file", session);
 			}
 			if (this.registeredLanguage.has(modeId.OLD)) {
 				this.client.closeDocument(oldSession, () => {
-					log("info", "closing file", oldSession)
+					log("info", "Slosing file", oldSession)
 				})
 			}
 		} else {
@@ -205,10 +229,7 @@ class LSP {
 		const languageFormatter: string[] = [];
 		
 		for (const config of Object.values(socketClients)) {
-		    config.modes.forEach(lang => {
-		        const result = lang === "javascript" ? "js" : (lang === "typescript" ? "ts" : lang);
-		        languageFormatter.push(result);
-		    })
+		    config.extension.forEach(lang => languageFormatter.push(lang));
 		}
 		
 		selectionMenu.add(async () => {
@@ -240,7 +261,7 @@ class LSP {
 			if (!this.client) return showToast("start LSP first");
 
 			this.client.format()
-		})
+		});
 		log("info", "Registered Formatter for language", languageFormatter);
 	}
 	initAllCommands() {
@@ -366,6 +387,7 @@ class LSP {
 			    } else if (key.startsWith("shortcut.")) {
 			    	const shortcut = key.replace("shortcut.", "");
 			    	setPluginSettings((settings): Partial<PluginSettings> => {
+			    	    log("info", `Shortcut changed for [${shortcut}] from "${settings[shortcut]}" to "${value}"`)
 			    		return {
 			    			shortcut: {
 			    				...settings.shortcut,
@@ -376,7 +398,8 @@ class LSP {
 			        this.removeAllCommands();
 			        this.initAllCommands();
 			    } else {
-			        setPluginSettings(() => {
+			        setPluginSettings((settings) => {
+			            log("info", `Settings changed for [${key}] from "${settings[key]}" to "${value}"`)
 			            return {
 			                [key]: value as string
 			            }
