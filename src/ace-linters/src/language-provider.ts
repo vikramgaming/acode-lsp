@@ -279,12 +279,14 @@ export class LanguageProvider {
         if (workspaceEdit.changes) {
             for (let uri in workspaceEdit.changes) {
                 if (!this.$urisToSessionsIds[uri]) {
-                    acode.newEditorFile(uri.split("/").pop()!, {
+                    const EditorFile = acode.require("editorFile");
+                    const file = new EditorFile(uri.split("/").pop()!, {
                         text: workspaceEdit.changes[uri][0].newText,
                         isUnsaved: true,
                         render: false,
                         uri: normalizePath(uri, "content")
                     });
+                    file.save();
                     continue
                 }
                 let sessionId = this.$urisToSessionsIds[uri];
