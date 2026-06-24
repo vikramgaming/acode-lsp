@@ -1,6 +1,7 @@
 import {Ace} from "ace-code";
 import "./types/ace-extension";
 
+import { normalizePath } from "../../utils"
 import {CommonConverter} from "./type-converters/common-converters";
 import {IMessageController} from "./types/message-controller-interface";
 import {MessageController} from "./message-controller";
@@ -278,14 +279,14 @@ export class LanguageProvider {
         if (workspaceEdit.changes) {
             for (let uri in workspaceEdit.changes) {
                 if (!this.$urisToSessionsIds[uri]) {
-                    callback && callback({
-                        applied: false,
-                        failureReason: "No session found for uri " + uri
-                    }, serviceName);
-                    return;
+                    acode.newEditorFile(uri.split("/").pop()!, {
+                        text: workspaceEdit.changes[uri][0].newText,
+                        isUnsaved: true,
+                        render: false,
+                        uri: normalizePath(uri, "content")
+                    });
+                    continue
                 }
-            }
-            for (let uri in workspaceEdit.changes) {
                 let sessionId = this.$urisToSessionsIds[uri];
                 let sessionLanguageProvider = this.$sessionLanguageProviders[sessionId];
                 sessionLanguageProvider.applyEdits(workspaceEdit.changes[uri]);
@@ -525,7 +526,7 @@ export class LanguageProvider {
         editor.on("changeSelection", changeSelectionForCodeActions);
     }
     getCodeActions(callback: (codeActions: CodeActionsByService[]) => void) {
-        const editor = this.activeEditor;
+        const editor = this.activeEditor!;
         if (!this.$getSessionLanguageProvider(editor.session)) {
             return;
         }

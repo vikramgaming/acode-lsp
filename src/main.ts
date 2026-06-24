@@ -11,7 +11,7 @@ import {
 	log,
 	showToast
 } from "./utils";
-import lspMethod from "./method"
+import lspMethod from "./method";
 
 const settings = acode.require("settings");
 const confirm = acode.require("confirm");

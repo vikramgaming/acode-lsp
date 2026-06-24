@@ -87,8 +87,6 @@ const method = {
             if (!actionByService?.codeActions || actionByService.codeActions.length === 0) return;
 
             const options = actionByService.codeActions.map(action => {
-                // Tidak support
-                if ((action as any)?.kind === "refactor.move.newFile") return null;
                 return {
                     text: action.title,
                     value: action
