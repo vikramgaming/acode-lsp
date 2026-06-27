@@ -43,13 +43,6 @@ const socketClients = {
         features: {},
         extension: ["js", "ts", "jsx", "tsx"],
     },
-    eslint: {
-        modes: ["javascript", "typescript", "jsx", "tsx"],
-        serviceName: "eslint",
-        args: ["vscode-eslint-language-server", "--stdio"],
-        features: {},
-        extension: ["js", "ts", "jsx", "tsx"],
-    },
     css: {
         modes: ["css", "scss", "less"],
         serviceName: "css",
