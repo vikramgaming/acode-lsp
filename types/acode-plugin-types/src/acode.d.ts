@@ -109,7 +109,7 @@ declare namespace Acode {
 		 * @param value
 		 * @returns
 		 */
-		cb: (key: string, value: unknown) => void;
+		cb: (key: string, value: any) => void;
 	}
 
 	type Require = <K extends string>(

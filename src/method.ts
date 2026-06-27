@@ -92,7 +92,7 @@ const method = {
                     text: action.title,
                     value: action
                 }
-            }).filter(action => action != null);
+            });
             if (options.length === 0) return;
 
             const action = await select("Select Code Actions", options) as typeof options[number]["value"];
@@ -154,7 +154,7 @@ async function goToLocation(methodName: string, client: LanguageProvider, servic
                 return {
                     text: `${pos}: ${fileName}`,
                     icon: helpers.getIconForFile(fileName),
-                    value: location as any
+                    value: location
                 }
             }).filter(loc => loc != null);
             if (options.length === 0) return;
