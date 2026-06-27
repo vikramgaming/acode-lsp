@@ -37,7 +37,7 @@ interface SocketClients {
 
 const socketClients = {
     typescript: {
-        modes: ["javascript", "typescript", "jsx", "tsx"],
+        modes: ["javascript", "typescript", "javascriptreact", "typescriptreact"],
         serviceName: "typescript",
         args: ["typescript-language-server", "--stdio"],
         features: {},
@@ -111,10 +111,12 @@ class LSP {
                 log("info", `Socket Connected for "${config.serviceName}" to: ${url}`);
             };
             socket.onclose = (e) => {
+                if (!this.client) return;
                 log("warn", `Socket closed for ${config.serviceName}`, e);
                 this.stopLSP();
             };
             socket.onerror = (e) => {
+                if (!this.client) return;
                 log("error", `Socket unexpected error for ${config.serviceName}`, e);
                 this.stopLSP();
             };
@@ -181,7 +183,6 @@ class LSP {
     }
     stopLSP() {
         if (!this.client) return;
-
 
         for (const id in this.socket) {
             this.socket[id].close();
