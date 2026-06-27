@@ -37,7 +37,7 @@ interface SocketClients {
 
 const socketClients = {
     typescript: {
-        modes: ["javascript", "typescript", "javascriptreact", "typescriptreact"],
+        modes: ["javascript", "typescript", "jsx", "tsx"],
         serviceName: "typescript",
         args: ["typescript-language-server", "--stdio"],
         features: {},
@@ -122,7 +122,7 @@ class LSP {
             };
             this.socket[id] = socket;
 
-            config.modes.forEach(mode => this.registeredLanguage.set(mode.toLowerCase(), config.serviceName));
+            config.extension.forEach(mode => this.registeredLanguage.set(mode.toLowerCase(), config.serviceName));
 
             const result: LanguageClientConfig = {
                 modes: config.modes.join("|"),
