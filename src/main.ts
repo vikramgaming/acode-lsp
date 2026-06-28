@@ -9,7 +9,8 @@ import {
     setPluginSettings,
     PluginSettings,
     log,
-    showToast
+    showToast,
+    delay
 } from "./utils";
 import lspMethod from "./method";
 
@@ -81,7 +82,7 @@ class LSP {
     registeredLanguage = new Map<string, string>();
 
     private client: LanguageProvider | null = null;
-    private socket: Record<string, WebSocket> = {};
+    private socket: WebSocket[] = [];
     private boundSwitchFile = this.switchFile.bind(this);
 
     constructor() {
@@ -111,18 +112,16 @@ class LSP {
                 log("info", `Socket Connected for "${config.serviceName}" to: ${url}`);
             };
             socket.onclose = (e) => {
-                if (!this.client) return;
                 log("warn", `Socket closed for ${config.serviceName}`, e);
                 this.stopLSP();
             };
             socket.onerror = (e) => {
-                if (!this.client) return;
                 log("error", `Socket unexpected error for ${config.serviceName}`, e);
                 this.stopLSP();
             };
-            this.socket[id] = socket;
+            this.socket.push(socket);
 
-            config.extension.forEach(mode => this.registeredLanguage.set(mode.toLowerCase(), config.serviceName));
+            config.modes.forEach(mode => this.registeredLanguage.set(mode.toLowerCase(), config.serviceName));
 
             const result: LanguageClientConfig = {
                 modes: config.modes.join("|"),
@@ -186,7 +185,7 @@ class LSP {
 
         for (const id in this.socket) {
             this.socket[id].close();
-            delete this.socket[id]
+            delete this.socket[id];
         }
         this.client?.unregisterEditor(this.currentEditor, true);
         this.client?.closeConnection?.();
@@ -194,11 +193,12 @@ class LSP {
         this.registeredLanguage.clear();
         log("info", "LSP Stopped");
     }
-    restartLSP() {
+    restartLSP(workspacePath = this.currentWorkspace) {
         log("info", "Restarting LSP");
-        const workspacePath = this.currentWorkspace;
         this.stopLSP();
-        this.startLSP(workspacePath);
+        delay(3000).then(() => {
+            this.startLSP(workspacePath);
+        });
     }
     switchFile({ oldSession, session }: { oldSession: EditSession, session: EditSession }) {
         if (!this.client) return
@@ -225,8 +225,7 @@ class LSP {
         } else {
             confirm("Workspace Changed", "Want to restart LSP?").then(i => {
                 if (i) {
-                    this.stopLSP();
-                    this.startLSP(workspace);
+                    this.restartLSP(workspace);
                 }
             })
         }
@@ -408,7 +407,12 @@ class LSP {
                         }
                     });
                 } else if (key === "restartLSP") {
-                    this[key]();
+                    if (!this.client) return showToast("LSP not activated");
+                    confirm("Restart LSP", "Are you sure?").then(i => {
+                        if (i) {
+                            this[key]();
+                        }
+                    });
                 } else if (key.startsWith("shortcut.")) {
                     const shortcut = key.replace("shortcut.", "");
                     setPluginSettings((settings): Partial<PluginSettings> => {
@@ -429,7 +433,7 @@ class LSP {
                             [key]: value
                         }
                     });
-                    showToast("Maybe need to Restart LSL");
+                    showToast("Maybe need to Restart LSP");
                 }
             },
         }

@@ -116,3 +116,9 @@ export function normalizeShortcutKeys(shortcut: string): { win: string, mac: str
 
     return addKey(keys);
 }
+
+export function delay(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+        setTimeout(() => {resolve()}, ms);
+    });
+}
