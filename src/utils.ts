@@ -4,6 +4,7 @@ const urlModule = acode.require("url");
 const openFolder = acode.require("openFolder");
 const EditorFile = acode.require("editorfile") as any;
 const settings = acode.require("settings");
+const { editor } = editorManager;
 
 export interface PluginSettings {
     socketUrl: string,
@@ -68,9 +69,9 @@ export function goToFile(fileUri: string, { row, column }: import("ace-code").Ac
     const uri = normalizePath(fileUri, "content");
 
     function updateCursor() {
-        editorManager.editor.clearSelection();
+        editor.clearSelection();
         editorManager.activeFile.session.selection.moveCursorTo(row, column);
-        editorManager.editor.focus();
+        editor.focus();
     }
     if (uri === editorManager.activeFile.uri) return updateCursor();
 
@@ -121,4 +122,18 @@ export function delay(ms: number): Promise<void> {
     return new Promise((resolve) => {
         setTimeout(() => {resolve()}, ms);
     });
+}
+
+export function debouncePromise<T extends (...args: any[]) => Promise<any>>(
+	fn: T,
+	delay: number
+) {
+	let timer: ReturnType<typeof setTimeout>;
+
+	return (...args: Parameters<T>): Promise<ReturnType<T>> => new Promise((resolve) => {
+		clearTimeout(timer);
+		timer = setTimeout(async () => {
+    		resolve(await fn(...args));
+		}, delay);
+	});
 }

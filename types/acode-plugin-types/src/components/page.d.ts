@@ -10,12 +10,12 @@ declare namespace Acode {
 				/**
 				 * Element shown before the title (e.g. back button).
 				 */
-				lead: HTMLElement;
+				lead?: HTMLElement;
 
 				/**
 				 * Element shown after the title (e.g. menu icon).
 				 */
-				tail: HTMLElement;
+				tail?: HTMLElement;
 			},
 		): WCPage;
 	}

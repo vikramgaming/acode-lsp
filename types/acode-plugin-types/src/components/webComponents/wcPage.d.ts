@@ -28,10 +28,10 @@ declare namespace Acode {
 		setTitle(title: string): void;
 
 		/** Hides the page */
-		hide(): string;
+		hide(): string | void;
 
 		/** Shows the page */
-		show(): string;
+		show(): string | void;
 
 		/**
 		 * The main content container

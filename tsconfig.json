@@ -14,7 +14,7 @@
     "typeRoots": ["./types"],
     "types": ["acode-plugin-types"],
     "skipLibCheck": true,
-    "lib": ["ES2017"],
+    "lib": ["ES2024"],
     "paths": {
         "@/linters/*": ["./src/ace-linters/src/*"]
     }
