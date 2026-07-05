@@ -127,7 +127,9 @@ declare namespace Acode {
 		contextmenu: ContextMenuConstructor;
 		createkeyboardevent: CreateKeyboardEvent;
 		dialogbox: DialogBoxConstructor;
-		editorfile: EditorFile;
+		editorfile: {
+			new (name: string, options: FileOptions): EditorFile
+		};
 		encodings: Encodings;
 		filebrowser: FileBrowser;
 		filelist: FileList;

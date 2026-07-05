@@ -1,39 +1,42 @@
-import { normalizePath, goToFile, log } from "./utils";
+import { normalizePath, goToFile, log, delay } from "./utils";
 import { fromRange, toPoint } from "./ace-linters/src/type-converters/lsp/lsp-converters";
-import { createPage, createFileCard, createListCard, createPositionText } from "./ui"
+import { createPage, createFileCard, createListCard, createPositionText, createNameText } from "./ui"
+import type { DocumentLink } from "./handler"
 
 const select = acode.require("select");
 const prompt = acode.require("prompt");
 const Range = ace.require("ace/range").Range;
 const { editor } = editorManager;
+const sidebutton = acode.require("sidebutton");
+const page = createPage("LSP Method");
+
+const sideBtn = sidebutton({
+	text: "Prev Page Method",
+	backgroundColor: "cyan",
+	textColor: "black",
+	onclick: () => page.show()
+});
+sideBtn.show();
 
 import type { LanguageProvider } from "./ace-linters/src/language-provider";
 
+type Position = {
+	character: number,
+	line: number
+}
+
 type Range = {
-	end: {
-		character: number,
-		line: number
-	},
-	start: {
-		character: number,
-		line: number
-	},
+	end: Position,
+	start: Position
 }
-type Location = {
-	uri: string,
-	range: Range
-}
-type DocumentLink = {
+
+type Hierarchy = {
+	detail: string,
+	kind: number,
+	name: string,
 	range: Range,
-	target: string
-}
-type RenameSymbol = {
-	changes: {
-		[x: string]: {
-			newText: string,
-			range: Range
-		}[]
-	}
+	selectionRange: Range,
+	uri: string
 }
 
 type Param = { selectionRange: ReturnType<typeof fromRange>, uri: string }
@@ -89,6 +92,14 @@ const method = {
 	renameSymbol: async (client, serviceName, { selectionRange, uri }) => {
 		const input = await prompt("Rename Symbol", editor.getSelectedText());
 		if (input == null) return;
+		type RenameSymbol = {
+			changes: {
+				[x: string]: {
+					newText: string,
+					range: Range
+				}[]
+			}
+		}
 
 		client.sendRequest(serviceName, "textDocument/rename", {
 			textDocument: { uri },
@@ -97,6 +108,7 @@ const method = {
 		}, async (response: Promise<RenameSymbol>) => {
 			const data = await response;
 			log("info", "Method Rename Symbol: ", serviceName, data);
+			if (!data) return
 
 			data.changes[uri].forEach(edit => {
 				const range = new Range(
@@ -110,11 +122,14 @@ const method = {
 		})
 	},
 	goToDocumentLink: async (client, serviceName, { selectionRange, uri }) => {
+		
+
 		client.sendRequest(serviceName, "textDocument/documentLink", {
 			textDocument: { uri }
 		}, async (reponse: Promise<DocumentLink[]>) => {
 			const data = await reponse;
 			log("info", `Method Document Link ${serviceName}:`, data);
+			if (!data) return
 			for (let location of data) {
 				if (
 					selectionRange.end.character <= location.range.end.character &&
@@ -132,24 +147,53 @@ const method = {
 			}
 		})
 	},
-	// TODO
 	callHierarchy: async (client, serviceName, { selectionRange, uri }) => {
 		client.sendRequest(serviceName, "textDocument/prepareCallHierarchy", {
 			textDocument: { uri },
 			position: selectionRange.end,
-		}, async (response) => {
+		}, async (response: Promise<Hierarchy[] | null>) => {
 			const data = await response;
-			log("info", `Method Call Hierarchy ${serviceName}:`, data)
+			log("info", `Method Call Hierarchy ${serviceName}:`, data);
+			if (!data) return;
+			const normalizeData = data.filter((d) => d.uri.startsWith(client.workspaceUri));
+			if (normalizeData.length === 0) return;
+	
+			const group = Object.groupBy(normalizeData, (item) => item.uri);
+			page.innerHTML = "";
+			const container = tag("div", {
+				style: {
+					display: "flex",
+					flexDirection: "column",
+					alignItems: "center",
+					gap: "10px"
+				}
+			});
+			const title = tag("h2", {
+				textContent: "callHierarchy"
+			});
+			container.append(title);
+			for (const [uri, hierarcyData] of Object.entries(group)) {
+				if (hierarcyData == null) continue;
+				const hierarcyList = createListCard(hierarcyData.length, (i) => createNameText(hierarcyData[i].name, hierarcyData[i].detail),
+					(i) => {
+						hierachySelect(client, serviceName, hierarcyData[i])
+					}
+				)
+				const filenameCard = createFileCard(uri.replace(client.workspaceUri, ""), hierarcyList);
+				container.append(filenameCard);
+			};
+			page.appendBody(container);
+			await delay(1000);
+			page.show();
 		})
 	},
-	// TODO
 	documentSymbol: async (client, serviceName, { uri }) => {
 		client.sendRequest(serviceName, "textDocument/documentSymbol", {
 			textDocument: { uri }
 		}, async (response) => {
 			const data = await response;
 			log("info", `Method Document Symbol ${serviceName}:`, data)
-			
+
 		})
 	}
 } satisfies {
@@ -157,6 +201,10 @@ const method = {
 }
 
 async function goToLocation(methodName: string, client: LanguageProvider, serviceName: string, { selectionRange, uri }: Param, moreParam: object = {}) {
+	type Location = {
+		uri: string,
+		range: Range
+	}
 	client.sendRequest(serviceName, `textDocument/${methodName}`,
 		{
 			textDocument: { uri },
@@ -169,33 +217,131 @@ async function goToLocation(methodName: string, client: LanguageProvider, servic
 
 			const normalizeData = data.filter((d) => d.uri.startsWith(client.workspaceUri));
 			if (normalizeData.length === 0) return;
-			if (normalizeData.length === 1) return goToFile(normalizeData[0].uri, toPoint(normalizeData[0].range.start));
 
 			const group = Object.groupBy(normalizeData, (item) => item.uri);
 
-			createPage("Select destination", (appendBody, hidePage) => {
-				const container = tag("div", {
-					style: {
-						display: "flex",
-						flexDirection: "column",
-						alignItems: "center",
-						gap: "10px"
-					}
-				});
-
-				for (const [resUri, resData] of Object.entries(group)) {
-					if (resData == null) continue;
-					const listPos = createListCard(resData.length, (i) => createPositionText(resData[i].range.start),
-						(i) => {
-							hidePage();
-							const selected = resData[i];
-							goToFile(selected.uri, toPoint(selected.range.start))
-						})
-					const fileNameCard = createFileCard(resUri.replace(client.workspaceUri, ""), listPos);
-					container.append(fileNameCard);
+			page.innerHTML = "";
+			const container = tag("div", {
+				style: {
+					display: "flex",
+					flexDirection: "column",
+					alignItems: "center",
+					gap: "10px"
 				}
-				appendBody(container);
-			})
+			});
+			const title = tag("h2", {
+				textContent: methodName
+			});
+			container.append(title);
+			for (const [uri, location] of Object.entries(group)) {
+				if (location == null) continue;
+				const locationList = createListCard(location.length, (i) => createPositionText(location[i].range.start),
+					(i) => {
+						page.hide();
+						goToFile(uri, toPoint(location[i].range.start));
+					}
+				)
+				const filenameCard = createFileCard(uri.replace(client.workspaceUri, ""), locationList);
+				container.append(filenameCard);
+			};
+			page.appendBody(container);
+			await delay(1000);
+			page.show();
+		}
+	)
+}
+
+async function hierachySelect(client: LanguageProvider, serviceName: string, item: Hierarchy) {
+	const input: string | null = await select("Select Method", [
+		{ text: "Incoming Calls", value: "incomingCalls" },
+		{ text: "outgoingCalls", value: "outgoingCalls" },
+	]);
+	if (!input) return;
+	page.hide();
+
+	type IncomingCalls = {
+		from: Hierarchy,
+		fromRanges: Range[]
+	}
+	type OutgoingCalls = {
+		to: Hierarchy,
+		fromRanges: Range[]
+	}
+
+	client.sendRequest(serviceName, `callHierarchy/${input}`, { item },
+		async (response: Promise<(IncomingCalls | OutgoingCalls)[] | null>) => {
+			const data = await response;
+			log("info", `Method ${input} ${serviceName}:`, data);
+			if (!data) return;
+			// dijadikan type outgoing calls
+			const normalizeData: OutgoingCalls[] = [];
+			for (const d of data) {
+				const result = {};
+				result.to = "to" in d ? d.to : d.from;
+				if (!result.to.uri.startsWith(client.workspaceUri)) continue;
+
+				result.fromRanges = d.fromRanges;
+				normalizeData.push(result as OutgoingCalls);
+			};
+			const group = Object.groupBy(normalizeData, (item) => item.to.uri);
+			page.innerHTML = "";
+			const container = tag("div", {
+				style: {
+					display: "flex",
+					flexDirection: "column",
+					alignItems: "center",
+					gap: "10px"
+				}
+			});
+			const title = tag("h2", {
+				textContent: input
+			});
+			container.append(title);
+			for (const [uri, hierarchyData] of Object.entries(group)) {
+				if (hierarchyData == null) continue;
+				const hierarchyDataList = createListCard(hierarchyData.length,
+					(i) => {
+						const div = tag("div");
+						const nameText = createNameText(hierarchyData[i].to.name, hierarchyData[i].to.detail);
+
+						const listRange = tag("ul", {
+							style: {
+								listStyle: "none",
+								display: "none",
+								marginTop: "3px",
+								flexDirection: "column",
+								gap: "5px"
+							}
+						});
+						nameText.onclick = () => {
+							listRange.style.display = listRange.style.display === "none" ? "flex" : "none"
+						}
+						for (const ranges of hierarchyData[i].fromRanges) {
+							const item = tag("li", {
+								style: {
+									border: "1px solid lime",
+									borderRadius: "5px",
+									padding: "4px"
+								},
+								onclick: () => {
+									page.hide();
+									goToFile((input === "outgoingCalls" ? editorManager.activeFile.uri : uri), toPoint(ranges.start))
+								}
+							});
+							item.append(createPositionText(ranges.start));
+							listRange.append(item);
+						}
+
+						div.append(nameText, listRange);
+						return div;
+					}
+				)
+				const filenameCard = createFileCard(uri.replace(client.workspaceUri, ""), hierarchyDataList);
+				container.append(filenameCard);
+			};
+			page.appendBody(container);
+			await delay(1000);
+			page.show();
 		}
 	)
 }

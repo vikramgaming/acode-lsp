@@ -2,7 +2,7 @@ import plugin from "../plugin.json"
 
 const urlModule = acode.require("url");
 const openFolder = acode.require("openFolder");
-const EditorFile = acode.require("editorfile") as any;
+const EditorFile = acode.require("editorfile");
 const settings = acode.require("settings");
 const { editor } = editorManager;
 

@@ -29,7 +29,7 @@ type Method = Parameters<typeof lspMethod>[0]
 export interface Session extends EditSession {
 	$modeId: string
 }
-interface SocketClients {
+export interface SocketClients {
 	modes: string[],
 	serviceName: string,
 	args: string[],
@@ -70,7 +70,6 @@ const socketClients: Record<string, SocketClients> = {
 		features: {
 			signatureHelp: false,
 			documentHighlight: false
-			callHierarchy: false,
 		},
 		extension: ["html"],
 		supportedMethod: {
@@ -128,8 +127,8 @@ class LSP {
 	get service() {
 		const mode = (editor.session as Session).$modeId.replace("ace/mode/", "");
 		const serviceName = this.registeredLanguage.get(mode);
-		const client = Object.values(socketClients).find(c => c.serviceName === serviceName)!;
-		return { serviceName, client }
+		const clientConfig = Object.values(socketClients).find(c => c.serviceName === serviceName);
+		return { serviceName, clientConfig }
 	}
 	createLSP(workspacePath: string) {
 		const { socketUrl } = getPluginSettings();
@@ -183,15 +182,18 @@ class LSP {
 			functionality: {
 				// sudah bikin sendiri, matikan saja untuk menambah performance
 				codeActions: false,
-				inlineCompletion: {
-					overwriteCompleters: true
+				// inlineCompletion: {
+				// 	overwriteCompleters: true
+				// },
+				completion: {
+					overwriteCompleters: false
 				},
 			},
-			aceComponents: {
-				InlineAutocomplete: ace.require("ace/ext/inline_autocomplete").InlineAutocomplete,
-				CompletionProvider: ace.require("ace/autocomplete").CompletionProvider,
-				CommandBarTooltip: ace.require("ace/ext/command_bar").CommandBarTooltip
-			}
+			// aceComponents: {
+			// 	InlineAutocomplete: ace.require("ace/ext/inline_autocomplete").InlineAutocomplete,
+			// 	CompletionProvider: ace.require("ace/autocomplete").CompletionProvider,
+			// 	CommandBarTooltip: ace.require("ace/ext/command_bar").CommandBarTooltip
+			// }
 		}
 		if (getPluginSettings().semanticTokens) {
 			providerOptions.functionality!.semanticTokens = true;
@@ -215,6 +217,7 @@ class LSP {
 			joinWorkspaceURI: true
 		});
 		this.currentEditor = editor;
+		editor.completers = editor.completers.filter(c => c.id != null && c.id !== "keywordCompleter");
 	}
 	stopLSP() {
 		if (!this.client) return;
@@ -283,8 +286,8 @@ class LSP {
 
 		selectionMenu.add(async () => {
 			if (!this.client) return showToast("Start LSP first");
-			const { serviceName, client } = this.service
-			if (!serviceName) return showToast("This file extension not supported");
+			const { serviceName, clientConfig } = this.service
+			if (!serviceName || !clientConfig) return showToast("This file extension not supported");
 
 			let options: (Acode.SelectItem & {
 				value: Method
@@ -300,9 +303,9 @@ class LSP {
 					{ text: "Rename Symbol", value: "renameSymbol" },
 					{ text: "Document Symbol", value: "documentSymbol" },
 				]
-			if (typeof client.supportedMethod === "object" && client.supportedMethod != null) {
+			if (typeof clientConfig.supportedMethod === "object" && clientConfig.supportedMethod != null) {
 				options = options.filter(({ value }: { value: Method }) => {
-					const v = client.supportedMethod?.[value]
+					const v = clientConfig.supportedMethod?.[value]
 					return v === true || v === undefined;
 				})
 			}
@@ -316,7 +319,8 @@ class LSP {
 		acode.registerFormatter(plugin.id, languageFormatter, async () => {
 			if (!this.client) return showToast("start LSP first");
 
-			this.client.format()
+			this.client.format();
+			await delay(1000);
 		});
 		log("info", "Registered Formatter for language", languageFormatter);
 	}

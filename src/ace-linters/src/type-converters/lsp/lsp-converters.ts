@@ -143,6 +143,8 @@ export function toCompletion(item: CompletionItem) {
         );
     } else if (kind === "Folder") {
         completion["icon"] = "icon folder";
+    } else {
+    	completion["icon"] = `.ace_autocomplete .ace_completion-icon.ace_${kind.toLowerCase()}`;
     }
 
     completion["command"] = command;

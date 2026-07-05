@@ -1,9 +1,6 @@
 const page = acode.require('page');
 
-export function createPage(
-	title: string,
-	element: HTMLElement | ((appendBody: Acode.WCPage["appendBody"], hidePage: Acode.WCPage["hide"]) => void)
-) {
+export function createPage(title: string) {
 	const backButton = tag('span', {
 		className: 'icon arrow_back',
 		dataset: { action: 'back-btn' },
@@ -12,16 +9,10 @@ export function createPage(
 
 	const settingsPage = page(title, { lead: backButton });
 
-	if (typeof element === "function") {
-		element(settingsPage.appendBody.bind(settingsPage), settingsPage.hide.bind(settingsPage));
-	} else {
-		settingsPage.appendBody(element);
-	}
-
 	settingsPage.show = () => {
 		app.append(settingsPage);
 	};
-	settingsPage.show();
+	return settingsPage;
 }
 
 export function createFileCard(
@@ -56,9 +47,6 @@ export function createFileCard(
 	const icon = tag("i", {
 		className: helpers.getIconForFile(filename),
 		style: `
-		display: flex;
-		align-items: center;
-		justify-content: center;
 		font-size: 1.25rem;`
 	});
 	containerIcon.append(icon);
@@ -97,18 +85,9 @@ export function createFileCard(
 	return container
 }
 
-export function createPositionText(position: { line: number, character: number }) {
-	const text = tag("h5", {
-		textContent: `line: ${position.line + 1}, char: ${position.character}`,
-		style: `
-		text-align: center;`
-	});
-	return text;
-}
-
 export function createListCard(
-	length: number, 
-	createElement: (index: number) => HTMLElement, 
+	length: number,
+	createElement: (index: number) => HTMLElement,
 	onClick?: (index: number) => void
 ) {
 	const listPos = tag("li", {
@@ -131,4 +110,27 @@ export function createListCard(
 		listPos.append(card);
 	};
 	return listPos
+}
+
+export function createPositionText(position: { line: number, character: number }) {
+	const text = tag("h5", {
+		textContent: `line: ${position.line + 1}, char: ${position.character}`,
+		style: `
+		text-align: center;`
+	});
+	return text;
+}
+
+export function createNameText(name: string, detail?: string) {
+	let textContent = `Name: ${name}`
+	if (detail && detail.length >= 1) {
+		textContent += `\nDetail: ${detail}`;
+	}
+	const text = tag("h5", {
+		style: `
+		white-space: pre-line;
+		text-align: center;`,
+		textContent
+	});
+	return text;
 }
