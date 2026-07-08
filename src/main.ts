@@ -1,6 +1,6 @@
 import plugin from "../plugin.json";
-import { AceLanguageClient } from "./ace-linters/src/ace-language-client";
-import { LanguageClient } from "./ace-linters/src/services/language-client";
+import { AceLanguageClient } from "@/linters/ace-language-client";
+import { LanguageClient } from "@/linters/services/language-client";
 import {
 	getActiveFolderPath,
 	getCurrentFilePath,
@@ -12,100 +12,32 @@ import {
 	showToast,
 	delay
 } from "./utils";
-import lspMethod from "./method";
+import LSPMethod, { MethodName } from "./method";
+import { socketClients, SocketClients } from "./constant";
 
 const settings = acode.require("settings");
 const confirm = acode.require("confirm");
 const select = acode.require("select");
 const multiPrompt = acode.require("multiPrompt");
 const selectionMenu = acode.require("selectionMenu");
-const { editor } = editorManager
+const { editor } = editorManager;
 
-import type { LanguageClientConfig } from "./ace-linters/src/types/language-service";
-import type { LanguageProvider } from "./ace-linters/src/language-provider";
+import type { LanguageClientConfig } from "@/linters/types/language-service";
+import type { LanguageProvider } from "@/linters/language-provider";
 import type { EditSession } from "ace-code/src/edit_session";
 
-type Method = Parameters<typeof lspMethod>[0]
 export interface Session extends EditSession {
 	$modeId: string
 }
-export interface SocketClients {
-	modes: string[],
-	serviceName: string,
-	args: string[],
-	features?: LanguageClientConfig["features"],
-	extension: string[],
-	supportedMethod?: Partial<Record<Method, boolean>>;
-}
 
-const socketClients: Record<string, SocketClients> = {
-	typescript: {
-		modes: ["javascript", "typescript", "jsx", "tsx"],
-		serviceName: "typescript",
-		args: ["typescript-language-server", "--stdio"],
-		extension: ["js", "ts", "jsx", "tsx"],
-		supportedMethod: {
-			goToDeclaration: false,
-		},
-	},
-	css: {
-		modes: ["css", "scss", "less"],
-		serviceName: "css",
-		args: ["vscode-css-language-server", "--stdio"],
-		features: {
-			signatureHelp: false,
-		},
-		extension: ["css", "scss", "less"],
-		supportedMethod: {
-			goToDeclaration: false,
-			goToTypeDefinition: false,
-			goToImplementation: false,
-			callHierarchy: false,
-		}
-	},
-	html: {
-		modes: ["html"],
-		serviceName: "html",
-		args: ["vscode-html-language-server", "--stdio"],
-		features: {
-			signatureHelp: false,
-			documentHighlight: false
-		},
-		extension: ["html"],
-		supportedMethod: {
-			goToDeclaration: false,
-			goToTypeDefinition: false,
-			goToImplementation: false,
-			findReferences: false,
-			renameSymbol: false,
-			callHierarchy: false,
-		}
-	},
-	json: {
-		modes: ["json", "json5"],
-		serviceName: "json",
-		args: ["vscode-json-language-server", "--stdio"],
-		features: {
-			signatureHelp: false,
-			documentHighlight: false
-		},
-		extension: ["json", "json5"],
-		supportedMethod: {
-			goToDefinition: false,
-			goToDeclaration: false,
-			goToTypeDefinition: false,
-			goToImplementation: false
-		},
-	},
-}
-
-class LSP {
+export class LSP {
 	baseUrl: string | undefined;
 	currentWorkspace: string = "";
 	currentEditor!: import("ace-code/src/editor").Editor;
 	registeredLanguage = new Map<string, string>();
 
-	private client: LanguageProvider | null = null;
+	method: LSPMethod;
+	client: LanguageProvider | null = null;
 	private socket: WebSocket[] = [];
 	private boundSwitchFile = this.switchFile.bind(this);
 
@@ -123,11 +55,13 @@ class LSP {
 			} satisfies PluginSettings
 			settings.update();
 		}
+		this.method = new LSPMethod(this);
+		this.methodHandler = new MethodHandler(this);
 	}
 	get service() {
 		const mode = (editor.session as Session).$modeId.replace("ace/mode/", "");
 		const serviceName = this.registeredLanguage.get(mode);
-		const clientConfig = Object.values(socketClients).find(c => c.serviceName === serviceName);
+		const clientConfig = Object.values(socketClients).find(c => c.serviceName === serviceName) as SocketClients;
 		return { serviceName, clientConfig }
 	}
 	createLSP(workspacePath: string) {
@@ -135,7 +69,8 @@ class LSP {
 
 		const serverConfig: LanguageClientConfig[] = [];
 
-		for (const config of Object.values(socketClients)) {
+		for (const cfg of Object.values(socketClients)) {
+			const config = cfg as SocketClients;
 			const url = `${socketUrl.replace(/\/?$/, "/")}${config.serviceName}-${workspacePath}?args=${config.args.join(",")}&type=stdio`
 			const socket = new WebSocket(url);
 			socket.onopen = () => {
@@ -159,7 +94,10 @@ class LSP {
 				features: config.features,
 				type: "socket",
 				module: () => ({ LanguageClient }),
-				socket
+				socket,
+				initializationOptions: config.initializationOptions,
+				serviceInstance: config.serviceInstance,
+				options: config.options,
 			}
 			serverConfig.push(result);
 		}
@@ -180,7 +118,7 @@ class LSP {
 			manualSessionControl: true,
 			workspacePath,
 			functionality: {
-				// sudah bikin sendiri, matikan saja untuk menambah performance
+				// sudah bikin sendiri, matikan saja
 				codeActions: false,
 				// inlineCompletion: {
 				// 	overwriteCompleters: true
@@ -217,7 +155,10 @@ class LSP {
 			joinWorkspaceURI: true
 		});
 		this.currentEditor = editor;
+		
+		editor.on("changeSession", (this.boundSwitchFile));
 		editor.completers = editor.completers.filter(c => c.id != null && c.id !== "keywordCompleter");
+		this.updateGlobalOptions();
 	}
 	stopLSP() {
 		if (!this.client) return;
@@ -230,6 +171,7 @@ class LSP {
 		this.client?.closeConnection?.();
 		this.client = null;
 		this.registeredLanguage.clear();
+		editor.off("changeSession", this.boundSwitchFile);
 		log("info", "LSP Stopped");
 	}
 	restartLSP(workspacePath = this.currentWorkspace) {
@@ -255,6 +197,7 @@ class LSP {
 					joinWorkspaceURI: true
 				});
 				log("info", "Switched to file", session);
+				this.updateGlobalOptions();
 			}
 			if (this.registeredLanguage.has(modeId.OLD)) {
 				this.client.closeDocument(oldSession, () => {
@@ -269,13 +212,19 @@ class LSP {
 			})
 		}
 	}
+	updateGlobalOptions() {
+		if (!this.client) return;
+		// switch (this.service.serviceName) {
+		// 	case socketClients.json.serviceName:
+		// 		break;
+		// }
+	}
 
 	async init(
 		_$page: Acode.WCPage,
 		_cacheFile: Acode.FileSystem,
 		_cacheFileUrl: string,
 	): Promise<void> {
-		editor.on("changeSession", (this.boundSwitchFile));
 		this.initAllCommands();
 
 		const languageFormatter: string[] = [];
@@ -290,7 +239,7 @@ class LSP {
 			if (!serviceName || !clientConfig) return showToast("This file extension not supported");
 
 			let options: (Acode.SelectItem & {
-				value: Method
+				value: MethodName
 			})[] = [
 					{ text: "Go To Document Link", value: "goToDocumentLink" },
 					{ text: "Go To Definition", value: "goToDefinition" },
@@ -304,15 +253,15 @@ class LSP {
 					{ text: "Document Symbol", value: "documentSymbol" },
 				]
 			if (typeof clientConfig.supportedMethod === "object" && clientConfig.supportedMethod != null) {
-				options = options.filter(({ value }: { value: Method }) => {
+				options = options.filter(({ value }: { value: MethodName }) => {
 					const v = clientConfig.supportedMethod?.[value]
 					return v === true || v === undefined;
 				})
 			}
 
-			const input: Method = await select("Select Command", options);
+			const input: MethodName = await select("Select Command", options);
 			if (input) {
-				lspMethod(input, this.client, serviceName);
+				this.method.callMethod(input);
 			}
 		}, "LSP", "selected");
 
@@ -320,7 +269,6 @@ class LSP {
 			if (!this.client) return showToast("start LSP first");
 
 			this.client.format();
-			await delay(1000);
 		});
 		log("info", "Registered Formatter for language", languageFormatter);
 	}
@@ -391,7 +339,6 @@ class LSP {
 		if (this.client) {
 			this.stopLSP();
 		}
-		editor.off("changeSession", this.boundSwitchFile);
 		this.removeAllCommands();
 		delete settings.value[plugin.id];
 		settings.update();

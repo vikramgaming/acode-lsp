@@ -9,7 +9,7 @@
 
 declare namespace Ace {
   type Anchor = import("ace/anchor").Anchor;
-  type Editor = import("ace/editor").Editor;
+  type Editor = import("ace-code/src/editor").Editor;
   type EditSession = import("ace/edit_session").EditSession;
   type Document = import("ace/document").Document;
   type Fold = import("ace/edit_session/fold").Fold;
@@ -618,14 +618,7 @@ declare namespace Ace {
     column: number;
   }
   type Position = Point;
-  interface Delta {
-    action: "insert" | "remove";
-    start: Point;
-    end: Point;
-    lines: string[];
-    id?: number;
-    folds?: Fold[];
-  }
+  type Delta = import("ace-code").Ace.Delta;
   interface Annotation {
     row: number;
     column: number;
