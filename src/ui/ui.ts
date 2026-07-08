@@ -1,6 +1,6 @@
 import { createFileCard, createListCard, createNameText, createPage, createPositionText } from "./ui-template";
 import type { Hierarchy, Location, OutgoingCalls } from "../method";
-import { delay, goToFile } from "../utils";
+import { delay, goToFile, log } from "../utils";
 import { toPoint } from "@/linters/type-converters/lsp/lsp-converters";
 
 const sidebutton = acode.require("sidebutton");
@@ -20,6 +20,7 @@ export async function destinationUI(data: Location[], workspaceUri: string, meth
 	if (normalizeData.length === 0) return;
 
 	const group = Object.groupBy(normalizeData, (item) => item.uri);
+	log("info", "Normalized Data for DestinationUI", group);
 
 	page.innerHTML = "";
 	const container = tag("div", {
@@ -55,6 +56,7 @@ export async function callHierarchyUI(data: Hierarchy[], workspaceUri: string, c
 	if (normalizeData.length === 0) return;
 
 	const group = Object.groupBy(normalizeData, (item) => item.uri);
+	log("info", "Normalized Data for callHierarchyUI", group);
 	page.innerHTML = "";
 	const container = tag("div", {
 		style: {
@@ -83,6 +85,7 @@ export async function callHierarchyUI(data: Hierarchy[], workspaceUri: string, c
 
 export async function callHierarchySelectUI(data: OutgoingCalls[], workspaceUri: string, input: string, originUri: string) {
 	const group = Object.groupBy(data, (item) => item.to.uri);
+	log("info", `Normalized Data for callHierarchyUI ${input}`, group);
 	page.innerHTML = "";
 	const container = tag("div", {
 		style: {

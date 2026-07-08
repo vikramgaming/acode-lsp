@@ -56,7 +56,6 @@ export class LSP {
 			settings.update();
 		}
 		this.method = new LSPMethod(this);
-		this.methodHandler = new MethodHandler(this);
 	}
 	get service() {
 		const mode = (editor.session as Session).$modeId.replace("ace/mode/", "");
@@ -155,7 +154,7 @@ export class LSP {
 			joinWorkspaceURI: true
 		});
 		this.currentEditor = editor;
-		
+
 		editor.on("changeSession", (this.boundSwitchFile));
 		editor.completers = editor.completers.filter(c => c.id != null && c.id !== "keywordCompleter");
 		this.updateGlobalOptions();
@@ -251,6 +250,7 @@ export class LSP {
 					{ text: "Show Code Actions", value: "codeActions" },
 					{ text: "Rename Symbol", value: "renameSymbol" },
 					{ text: "Document Symbol", value: "documentSymbol" },
+					{ text: "Range Formatting", value: "rangeFormat" },
 				]
 			if (typeof clientConfig.supportedMethod === "object" && clientConfig.supportedMethod != null) {
 				options = options.filter(({ value }: { value: MethodName }) => {
@@ -268,7 +268,7 @@ export class LSP {
 		acode.registerFormatter(plugin.id, languageFormatter, async () => {
 			if (!this.client) return showToast("start LSP first");
 
-			this.client.format();
+			this.method.format();
 		});
 		log("info", "Registered Formatter for language", languageFormatter);
 	}
@@ -316,7 +316,7 @@ export class LSP {
 					log("error", "Cannot find the client");
 					return showToast("Start LSP first");
 				}
-				this.client.format();
+				this.method.format();
 			}
 		})
 		editor.commands.addCommand({

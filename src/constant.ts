@@ -29,7 +29,6 @@ export const socketClients = {
 		args: ["vscode-css-language-server", "--stdio"],
 		features: {
 			semanticTokens: false,
-			format: false
 		},
 		extension: ["css", "scss", "less"],
 		supportedMethod: {
@@ -45,7 +44,6 @@ export const socketClients = {
 		args: ["vscode-html-language-server", "--stdio"],
 		features: {
 			semanticTokens: false,
-			format: false
 		},
 		extension: ["html"],
 		supportedMethod: {
@@ -65,14 +63,14 @@ export const socketClients = {
 			signatureHelp: false,
 			documentHighlight: false,
 			semanticTokens: false,
-			format: false
 		},
 		extension: ["json", "json5"],
 		supportedMethod: {
 			goToDefinition: false,
 			goToDeclaration: false,
 			goToTypeDefinition: false,
-			goToImplementation: false
+			goToImplementation: false,
+			callHierarchy: false
 		},
 	},
 } satisfies Record<string, SocketClients>
