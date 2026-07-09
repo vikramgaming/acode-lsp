@@ -27,7 +27,7 @@ import type { LanguageProvider } from "@/linters/language-provider";
 import type { EditSession } from "ace-code/src/edit_session";
 
 export interface Session extends EditSession {
-	$modeId: string
+	$modeId: string;
 }
 
 export class LSP {
@@ -52,7 +52,7 @@ export class LSP {
 					devTest: "Ctrl-Alt-T"
 				},
 				semanticTokens: false
-			} satisfies PluginSettings
+			} satisfies PluginSettings;
 			settings.update();
 		}
 		this.method = new LSPMethod(this);
@@ -61,7 +61,7 @@ export class LSP {
 		const mode = (editor.session as Session).$modeId.replace("ace/mode/", "");
 		const serviceName = this.registeredLanguage.get(mode);
 		const clientConfig = Object.values(socketClients).find(c => c.serviceName === serviceName) as SocketClients;
-		return { serviceName, clientConfig }
+		return { serviceName, clientConfig };
 	}
 	createLSP(workspacePath: string) {
 		const { socketUrl } = getPluginSettings();
@@ -70,7 +70,7 @@ export class LSP {
 
 		for (const cfg of Object.values(socketClients)) {
 			const config = cfg as SocketClients;
-			const url = `${socketUrl.replace(/\/?$/, "/")}${config.serviceName}-${workspacePath}?args=${config.args.join(",")}&type=stdio`
+			const url = `${socketUrl.replace(/\/?$/, "/")}${config.serviceName}-${workspacePath}?args=${config.args.join(",")}&type=stdio`;
 			const socket = new WebSocket(url);
 			socket.onopen = () => {
 				log("info", `Socket Connected for "${config.serviceName}" to: ${url}`);
@@ -97,7 +97,7 @@ export class LSP {
 				initializationOptions: config.initializationOptions,
 				serviceInstance: config.serviceInstance,
 				options: config.options,
-			}
+			};
 			serverConfig.push(result);
 		}
 
@@ -109,7 +109,7 @@ export class LSP {
 			}
 			registeredLanguage[serviceName].push(lang);
 		}
-		log("info", "Registered language serviceName:", registeredLanguage)
+		log("info", "Registered language serviceName:", registeredLanguage);
 
 		this.currentWorkspace = workspacePath;
 
@@ -131,7 +131,7 @@ export class LSP {
 			// 	CompletionProvider: ace.require("ace/autocomplete").CompletionProvider,
 			// 	CommandBarTooltip: ace.require("ace/ext/command_bar").CommandBarTooltip
 			// }
-		}
+		};
 		if (getPluginSettings().semanticTokens) {
 			providerOptions.functionality!.semanticTokens = true;
 		}
@@ -157,7 +157,6 @@ export class LSP {
 
 		editor.on("changeSession", (this.boundSwitchFile));
 		editor.completers = editor.completers.filter(c => c.id != null && c.id !== "keywordCompleter");
-		this.updateGlobalOptions();
 	}
 	stopLSP() {
 		if (!this.client) return;
@@ -180,43 +179,35 @@ export class LSP {
 			this.startLSP(workspacePath);
 		});
 	}
-	switchFile({ oldSession, session }: { oldSession: EditSession, session: EditSession }) {
-		if (!this.client) return
+	switchFile({ oldSession, session }: { oldSession: EditSession, session: EditSession; }) {
+		if (!this.client) return;
 		const workspace = getActiveFolderPath();
 		if (workspace == null) return;
 
 		if (this.currentWorkspace === workspace) {
 			const modeId = {
-				NEW: (session as Session).$modeId.replace("ace/mode/", ""),
-				OLD: (oldSession as Session).$modeId.replace("ace/mode/", ""),
-			}
+				NEW: (session as Session).$modeId.split("/").pop()!,
+				OLD: (oldSession as Session).$modeId.split("/").pop()!,
+			};
 			if (this.registeredLanguage.has(modeId.NEW)) {
 				this.client.registerSession(session, this.currentEditor, {
 					filePath: getCurrentFilePath(),
 					joinWorkspaceURI: true
 				});
-				log("info", "Switched to file", session);
-				this.updateGlobalOptions();
+				log("info", "Switched to Session", session);
 			}
 			if (this.registeredLanguage.has(modeId.OLD)) {
 				this.client.closeDocument(oldSession, () => {
-					log("info", "Slosing file", oldSession)
-				})
+					log("info", "Session Closed", oldSession);
+				});
 			}
 		} else {
 			confirm("Workspace Changed", "Want to restart LSP?").then(i => {
 				if (i) {
 					this.restartLSP(workspace);
 				}
-			})
+			});
 		}
-	}
-	updateGlobalOptions() {
-		if (!this.client) return;
-		// switch (this.service.serviceName) {
-		// 	case socketClients.json.serviceName:
-		// 		break;
-		// }
 	}
 
 	async init(
@@ -234,11 +225,11 @@ export class LSP {
 
 		selectionMenu.add(async () => {
 			if (!this.client) return showToast("Start LSP first");
-			const { serviceName, clientConfig } = this.service
+			const { serviceName, clientConfig } = this.service;
 			if (!serviceName || !clientConfig) return showToast("This file extension not supported");
 
 			let options: (Acode.SelectItem & {
-				value: MethodName
+				value: MethodName;
 			})[] = [
 					{ text: "Go To Document Link", value: "goToDocumentLink" },
 					{ text: "Go To Definition", value: "goToDefinition" },
@@ -251,12 +242,12 @@ export class LSP {
 					{ text: "Rename Symbol", value: "renameSymbol" },
 					{ text: "Document Symbol", value: "documentSymbol" },
 					{ text: "Range Formatting", value: "rangeFormat" },
-				]
+				];
 			if (typeof clientConfig.supportedMethod === "object" && clientConfig.supportedMethod != null) {
-				options = options.filter(({ value }: { value: MethodName }) => {
-					const v = clientConfig.supportedMethod?.[value]
+				options = options.filter(({ value }: { value: MethodName; }) => {
+					const v = clientConfig.supportedMethod?.[value];
 					return v === true || v === undefined;
-				})
+				});
 			}
 
 			const input: MethodName = await select("Select Command", options);
@@ -277,7 +268,7 @@ export class LSP {
 		for (let [name, key] of Object.entries(getPluginSettings().shortcut)) {
 			shortcutKeys[name] = normalizeShortcutKeys(key);
 		}
-		log("info", "shortcutKeys:", shortcutKeys)
+		log("info", "shortcutKeys:", shortcutKeys);
 
 		editor.commands.addCommand({
 			name: "LSP Init",
@@ -301,13 +292,13 @@ export class LSP {
 						required: true,
 						readOnly: true
 					}
-				], "").then(({ workspacePath }: { workspacePath: string }) => {
+				], "").then(({ workspacePath }: { workspacePath: string; }) => {
 					if (workspacePath) {
-						this.startLSP(workspacePath)
+						this.startLSP(workspacePath);
 					}
-				})
+				});
 			}
-		})
+		});
 		editor.commands.addCommand({
 			name: "LSP Format",
 			bindKey: shortcutKeys.format,
@@ -318,17 +309,17 @@ export class LSP {
 				}
 				this.method.format();
 			}
-		})
+		});
 		editor.commands.addCommand({
 			name: "LSP Dev Test",
 			bindKey: shortcutKeys.devTest,
 			exec: async () => {
 				if (!getPluginSettings().debug || !this.client) return;
 				this.client.doComplete(editor, editor.session, (completionList) => {
-					log("info", "<dev>", "completions: ", completionList)
-				})
+					log("info", "<dev>", "completions: ", completionList);
+				});
 			}
-		})
+		});
 	}
 	removeAllCommands() {
 		editor.commands.removeCommand("LSP Init");
@@ -413,27 +404,27 @@ export class LSP {
 				} else if (key.startsWith("shortcut.")) {
 					const shortcut = key.replace("shortcut.", "");
 					setPluginSettings((settings): Partial<PluginSettings> => {
-						log("info", `Shortcut changed for [${shortcut}] from "${(settings as any)[shortcut]}" to "${value}"`)
+						log("info", `Shortcut changed for [${shortcut}] from "${(settings as any)[shortcut]}" to "${value}"`);
 						return {
 							shortcut: {
 								...settings.shortcut,
 								[shortcut]: value
 							}
-						}
-					})
+						};
+					});
 					this.removeAllCommands();
 					this.initAllCommands();
 				} else {
 					setPluginSettings((settings) => {
-						log("info", `Settings changed for [${key}] from "${(settings as any)[key]}" to "${value}"`)
+						log("info", `Settings changed for [${key}] from "${(settings as any)[key]}" to "${value}"`);
 						return {
 							[key]: value
-						}
+						};
 					});
 					showToast("Maybe need to Restart LSP");
 				}
 			},
-		}
+		};
 	}
 }
 

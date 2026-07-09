@@ -33,16 +33,16 @@ export default class LSPMethod implements Method {
 	private get client() {
 		return this.lsp.client;
 	}
-	getServiceName() {
+	getServiceName(): string | undefined {
 		return this.lsp.service.serviceName;
 	}
-	getSelectionRange() {
+	getSelectionRange(): import("vscode-languageserver-types").Range {
 		return fromRange(editor.getSelectionRange());
 	}
-	getFileUri() {
+	getFileUri(): string {
 		return normalizePath(editorManager.activeFile.uri, "file");
 	}
-	callMethod(name: MethodName) {
+	callMethod(name: MethodName): void {
 		this.currentMethod = name;
 		this[name]();
 	}
@@ -52,7 +52,7 @@ export default class LSPMethod implements Method {
 	rangeFormat(): void {
 		this.execFormat("rangeFormatting", {
 			range: this.getSelectionRange()
-		})
+		});
 	}
 	private execFormat(methodName: string, moreParams: object = {}, options: object = {}) {
 		const serviceName = this.getServiceName();
@@ -65,7 +65,7 @@ export default class LSPMethod implements Method {
 			trimTrailingWhitespace: true,
 			insertFinalNewline: true,
 			trimFinalNewlines: true
-		}
+		};
 		this.client.sendRequest(serviceName, `textDocument/${methodName}`, {
 			textDocument: { uri },
 			options: {
@@ -77,13 +77,11 @@ export default class LSPMethod implements Method {
 			const data = await response;
 			log("info", `Method ${methodName} ${serviceName}`, data);
 			if (!data) return;
-			data.sort((a, b) => {
-				const startA = a.range.start;
-				const startB = b.range.start;
-				if (startA.line === startB.line) return startA.character - startB.character;
-				return startA.line - startB.line;
-			}).forEach(edit => editor.session.replace(toRange(edit.range), edit.newText))
-		})
+			data.sort((a, b) =>
+				b.range.start.line - a.range.start.line ||
+				b.range.start.character - a.range.start.character
+			).forEach(edit => editor.session.replace(toRange(edit.range), edit.newText));
+		});
 	}
 	goToDocumentLink(): void {
 		const serviceName = this.getServiceName();
@@ -96,7 +94,7 @@ export default class LSPMethod implements Method {
 		}, async (reponse: Promise<DocumentLink[] | null>) => {
 			const data = await reponse;
 			log("info", `Method Document Link ${serviceName}:`, data);
-			if (!data) return
+			if (!data) return;
 			for (let location of data) {
 				if (
 					selectionRange.end.character <= location.range.end.character &&
@@ -112,7 +110,7 @@ export default class LSPMethod implements Method {
 					break;
 				}
 			}
-		})
+		});
 	}
 	codeActions(): void {
 		const serviceName = this.getServiceName();
@@ -129,19 +127,19 @@ export default class LSPMethod implements Method {
 				return {
 					text: action.title,
 					value: action
-				}
+				};
 			});
 			if (options.length === 0) return;
 
 			const action = await select("Select Code Actions", options) as typeof options[number]["value"];
 			if (typeof action.command === "string") {
-				this.client.executeCommand(action.command, serviceName, (action as any)["arguments"])
+				this.client.executeCommand(action.command, serviceName, (action as any)["arguments"]);
 			} else {
 				if (action.command) {
 					this.client.executeCommand(action.command.command, serviceName, action.command.arguments);
 				}
 				if ("edit" in action) {
-					this.client.applyEdit(action.edit!, serviceName)
+					this.client.applyEdit(action.edit!, serviceName);
 				}
 			}
 		});
@@ -161,15 +159,13 @@ export default class LSPMethod implements Method {
 			}, async (response: Promise<RenameSymbol | null>) => {
 				const data = await response;
 				log("info", "Method Rename Symbol: ", serviceName, data);
-				if (!data) return
+				if (!data) return;
 
-				data.changes[uri].sort((a, b) => {
-					const startA = a.range.start;
-					const startB = b.range.start;
-					if (startA.line === startB.line) return startA.character - startB.character;
-					return startA.line - startB.line;
-				}).forEach(edit => editor.session.replace(toRange(edit.range), edit.newText))
-			})
+				data.changes[uri].sort((a, b) =>
+					b.range.start.line - a.range.start.line ||
+					b.range.start.character - a.range.start.character
+				).forEach(edit => editor.session.replace(toRange(edit.range), edit.newText));
+			});
 		});
 	}
 	callHierarchy(): void {
@@ -187,9 +183,9 @@ export default class LSPMethod implements Method {
 			log("info", `Method Call Hierarchy ${serviceName}:`, data);
 			if (!data || !this.client) return;
 			callHierarchyUI(data, workspaceUri, (hierarchyData) => {
-				this.hierarchySelect(hierarchyData, serviceName, uri)
-			})
-		})
+				this.hierarchySelect(hierarchyData, serviceName, uri);
+			});
+		});
 	}
 	private hierarchySelect(item: Hierarchy, serviceName: string, originUri: string): void {
 		select("Select Method", [
@@ -217,7 +213,7 @@ export default class LSPMethod implements Method {
 					};
 					callHierarchySelectUI(normalizeData, workspaceUri, input, originUri);
 				}
-			)
+			);
 		});
 	}
 	documentSymbol(): void {
@@ -229,9 +225,9 @@ export default class LSPMethod implements Method {
 			textDocument: { uri }
 		}, async (response) => {
 			const data = await response;
-			log("info", `Method Document Symbol ${serviceName}:`, data)
+			log("info", `Method Document Symbol ${serviceName}:`, data);
 
-		})
+		});
 	}
 
 	goToDeclaration(): void {
@@ -251,7 +247,7 @@ export default class LSPMethod implements Method {
 			context: {
 				includeDeclaration: true
 			}
-		})
+		});
 	}
 
 	private goToLocation(methodName: goToLocationMethod, moreParams: object = {}) {
@@ -259,7 +255,7 @@ export default class LSPMethod implements Method {
 		if (!this.client || !serviceName) return;
 		const uri = this.getFileUri();
 		const selectionRange = this.getSelectionRange();
-		const workspaceUri = this.client.workspaceUri
+		const workspaceUri = this.client.workspaceUri;
 
 		this.client.sendRequest(serviceName, `textDocument/${methodName}`,
 			{
@@ -272,49 +268,49 @@ export default class LSPMethod implements Method {
 				log("info", `Method ${methodName} ${serviceName}:`, data);
 				await destinationUI(data, workspaceUri, this.currentMethod);
 			}
-		)
+		);
 	}
 }
 
 type TextEdit = {
 	range: Range,
-	newText: string
-}
+	newText: string;
+};
 type Position = {
 	character: number,
-	line: number
-}
+	line: number;
+};
 type Range = {
 	end: Position,
-	start: Position
-}
+	start: Position;
+};
 export type DocumentLink = {
 	range: Range,
-	target: string
+	target: string;
 };
-type goToLocationMethod = "declaration" | "definition" | "typeDefinition" | "implementation" | "references"
+type goToLocationMethod = "declaration" | "definition" | "typeDefinition" | "implementation" | "references";
 export type Location = {
 	uri: string,
-	range: Range
-}
+	range: Range;
+};
 type RenameSymbol = {
 	changes: {
-		[x: string]: TextEdit[]
-	}
-}
+		[x: string]: TextEdit[];
+	};
+};
 export type Hierarchy = {
 	detail: string,
 	kind: number,
 	name: string,
 	range: Range,
 	selectionRange: Range,
-	uri: string
-}
+	uri: string;
+};
 type IncomingCalls = {
 	from: Hierarchy,
-	fromRanges: Range[]
-}
+	fromRanges: Range[];
+};
 export type OutgoingCalls = {
 	to: Hierarchy,
-	fromRanges: Range[]
-}
+	fromRanges: Range[];
+};

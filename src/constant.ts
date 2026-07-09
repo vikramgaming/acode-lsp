@@ -22,6 +22,18 @@ export const socketClients = {
 			goToDocumentLink: false,
 			goToDeclaration: false,
 		},
+		initializationOptions: {
+			typescript: {
+				format: {
+					semicolons: "insert"
+				}
+			},
+			javascript: {
+				format: {
+					semicolons: "insert"
+				}
+			},
+		}
 	},
 	css: {
 		modes: ["css", "scss", "less"],
@@ -72,5 +84,19 @@ export const socketClients = {
 			goToImplementation: false,
 			callHierarchy: false
 		},
+		initializationOptions: {
+			json: {
+	            schemas: [
+	                {
+	                    fileMatch: ["*.tsconfig.json", "tsconfig.json", "tsconfig.*.json"],
+	                    url: "https://json.schemastore.org/tsconfig",
+	                },
+	                {
+	                    fileMatch: ["package.json"],
+	                    url: "https://json.schemastore.org/package",
+	                },
+	            ],
+	        }
+		}
 	},
 } satisfies Record<string, SocketClients>
