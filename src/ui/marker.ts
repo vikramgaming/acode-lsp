@@ -1,21 +1,31 @@
 export default class Marker {
-	private markerMap = Map<string, number[]>();
+	session: Ace.EditSession;
+	markers: number[] = [];
 	
-	addMarker(session: Ace.EditSession, range: Parameters<typeof session.addMarker>[0]): number {
-		const markerId = session.addMarker(range, );
-		if (this.markerMap.has(session.id)) {
-			const markers = this.markerMap.get(session.id);
-			markers.push(markerId);
-			this.markerMap.set(session.id, markerId);
-			return markerId;
-		}
-		this.markerMap.set(session.id, [markerId]);
+	constructor(session: Ace.EditSession) {
+		this.session = session;
+	}
+	
+	addMarker(range: Parameters<typeof this.session.addMarker>[0], clazz = "ace_selection-text", type = "text", inFront = true) {
+		// Mengonversi interface internal ke format Ace Range yang valid
+		const AceRange = ace.require("ace/range").Range;
+		const aceRange = new AceRange(range.start.row, range.start.column, range.end.row, range.end.column);
+
+		const markerId = this.session.addMarker(aceRange, clazz, type, inFront);
+		this.markers.push(markerId);
 		return markerId;
 	}
-	clearMarker(session) {
-		if (!this.markerMap.has(session.id)) return;
-		const markers = this.markerMap.get(session.id);
-		markers.forEach(markerId => session.removeMarker(markerId));
-		this.markerMap.delete(session.id);
+
+	deleteMarker(id: number) {
+		if (!this.markers.includes(id)) return;
+		
+		this.session.removeMarker(id);
+		// Menghapus ID dari array secara bersih
+		this.markers = this.markers.filter(markerId => markerId !== id);
+	}
+
+	clearMarkers() {
+		this.markers.forEach(id => this.session.removeMarker(id));
+		this.markers = [];
 	}
 }

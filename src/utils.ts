@@ -53,24 +53,22 @@ export function normalizePath(path: string, prefix?: "file" | "content") {
 	}
 	return normalized;
 }
-export function getActiveFolderPath() {
-	const fileUri = editorManager.activeFile?.uri;
-	const folder = fileUri ? openFolder.find(fileUri) : undefined;
+export function getActiveFolderPath(fileUri = editorManager.activeFile.uri) {
+	const folder = openFolder.find(fileUri);
 	if (!folder?.url) return;
 	return normalizePath(folder.url, "file");
 }
-export function getCurrentFilePath() {
-	const fileUri = editorManager.activeFile?.uri;
-	const folder = fileUri ? openFolder.find(fileUri) : undefined;
+export function getCurrentFilePath(fileUri = editorManager.activeFile.uri) {
+	const folder = openFolder.find(fileUri);
 	if (!folder?.url) return fileUri;
 	return fileUri.replace(folder.url, "").replace(/^\/+/, '');
 }
-export function goToFile(fileUri: string, { row, column }: import("ace-code").Ace.Point) {
+export function goToFile(fileUri: string, { row, column }: { row: number, column: number }) {
 	const uri = normalizePath(fileUri, "content");
 
-	function updateCursor() {
+	function updateCursor(session = editorManager.activeFile.session) {
 		editor.clearSelection();
-		editorManager.activeFile.session.selection.moveCursorTo(row, column);
+		session.selection.moveCursorTo(row, column);
 		editor.focus();
 	}
 	if (uri === editorManager.activeFile.uri) return updateCursor();
@@ -78,12 +76,12 @@ export function goToFile(fileUri: string, { row, column }: import("ace-code").Ac
 	const file = editorManager.getFile(uri, "uri");
 	if (file) {
 		file.makeActive();
-		updateCursor();
+		updateCursor(file.session);
 		return;
 	}
 	const fileName = (uri.split("/").pop()) as string;
 	const openedFile = new EditorFile(fileName, { uri });
-	openedFile.onloadend = updateCursor;
+	openedFile.onloadend = () => updateCursor(openedFile.session);
 }
 export function normalizeShortcutKeys(shortcut: string): { win: string, mac: string; } {
 	const keys = shortcut.split("-").filter(Boolean);

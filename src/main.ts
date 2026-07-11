@@ -10,7 +10,8 @@ import {
 	PluginSettings,
 	log,
 	showToast,
-	delay
+	delay,
+	normalizePath
 } from "./utils";
 import LSPMethod, { MethodName } from "./method";
 import { socketClients, SocketClients } from "./constant";
@@ -24,10 +25,17 @@ const { editor } = editorManager;
 
 import type { LanguageClientConfig } from "@/linters/types/language-service";
 import type { LanguageProvider } from "@/linters/language-provider";
-import type { EditSession } from "ace-code/src/edit_session";
 
-export interface Session extends EditSession {
+export interface Session extends Ace.EditSession {
 	$modeId: string;
+}
+
+interface SessionInfo {
+	id: string;
+	fileId: string;
+	mode: string;
+	name: string;
+	uri: string;
 }
 
 export class LSP {
@@ -35,11 +43,12 @@ export class LSP {
 	currentWorkspace: string = "";
 	currentEditor!: import("ace-code/src/editor").Editor;
 	registeredLanguage = new Map<string, string>();
+	sessionListId = new Map<string, SessionInfo>();
 
 	method: LSPMethod;
 	client: LanguageProvider | null = null;
 	private socket: WebSocket[] = [];
-	private boundSwitchFile = this.switchFile.bind(this);
+	private onStopFunctions: (() => void)[] = [];
 
 	constructor() {
 		if (!settings.value[plugin.id]) {
@@ -56,6 +65,9 @@ export class LSP {
 			settings.update();
 		}
 		this.method = new LSPMethod(this);
+	}
+	set onStop(fn: () => void) {
+		this.onStopFunctions.push(fn);
 	}
 	get service() {
 		const mode = (editor.session as Session).$modeId.replace("ace/mode/", "");
@@ -119,6 +131,7 @@ export class LSP {
 			functionality: {
 				// sudah bikin sendiri, matikan saja
 				codeActions: false,
+				format: false,
 				// inlineCompletion: {
 				// 	overwriteCompleters: true
 				// },
@@ -146,16 +159,14 @@ export class LSP {
 		log("info", "Initializing for WorkspacePath :", workspacePath);
 
 		this.client = this.createLSP(workspacePath);
-
-		log("info", "Client", this.client);
-
 		this.client.registerEditor(editor, {
 			filePath: getCurrentFilePath(),
 			joinWorkspaceURI: true
 		});
-		this.currentEditor = editor;
+		log("info", "Client", this.client);
 
-		editor.on("changeSession", (this.boundSwitchFile));
+		this.currentEditor = editor;
+		this.initSessionHandler(this.client);
 		editor.completers = editor.completers.filter(c => c.id != null && c.id !== "keywordCompleter");
 	}
 	stopLSP() {
@@ -169,7 +180,8 @@ export class LSP {
 		this.client?.closeConnection?.();
 		this.client = null;
 		this.registeredLanguage.clear();
-		editor.off("changeSession", this.boundSwitchFile);
+		this.sessionListId.clear();
+		this.onStopFunctions.forEach(fn => fn());
 		log("info", "LSP Stopped");
 	}
 	restartLSP(workspacePath = this.currentWorkspace) {
@@ -179,35 +191,95 @@ export class LSP {
 			this.startLSP(workspacePath);
 		});
 	}
-	switchFile({ oldSession, session }: { oldSession: EditSession, session: EditSession; }) {
-		if (!this.client) return;
-		const workspace = getActiveFolderPath();
-		if (workspace == null) return;
+	initSessionHandler(client: LanguageProvider) {
+		const addSession = (file: Acode.EditorFile) => {
+			if (
+				!file.uri ||
+				!normalizePath(file.uri, "file").startsWith(this.currentWorkspace)
+			) return;
 
-		if (this.currentWorkspace === workspace) {
-			const modeId = {
-				NEW: (session as Session).$modeId.split("/").pop()!,
-				OLD: (oldSession as Session).$modeId.split("/").pop()!,
-			};
-			if (this.registeredLanguage.has(modeId.NEW)) {
-				this.client.registerSession(session, this.currentEditor, {
-					filePath: getCurrentFilePath(),
+			delay(500).then(() => {
+				const session = (file.session) as Session;
+				const modeId = session.$modeId.split("/").pop()!;
+				if (!this.registeredLanguage.has(modeId)) return;
+				const sessionData: SessionInfo = {
+					id: session.id,
+					fileId: file.id,
+					mode: modeId,
+					name: file.name,
+					uri: file.uri
+				};
+				this.sessionListId.set(file.id, sessionData);
+				this.sessionListId.set(session.id, sessionData);
+
+				client.registerSession(session, this.currentEditor, {
+					filePath: getCurrentFilePath(file.uri),
 					joinWorkspaceURI: true
 				});
-				log("info", "Switched to Session", session);
-			}
-			if (this.registeredLanguage.has(modeId.OLD)) {
-				this.client.closeDocument(oldSession, () => {
-					log("info", "Session Closed", oldSession);
-				});
-			}
-		} else {
-			confirm("Workspace Changed", "Want to restart LSP?").then(i => {
-				if (i) {
-					this.restartLSP(workspace);
-				}
+				log("info", "Register Session:", sessionData);
 			});
-		}
+		};
+		let called = false;
+		const renameSession = (file: Acode.EditorFile) => {
+			if (
+				called ||
+				!file.uri ||
+				!normalizePath(file.uri, "file").startsWith(this.currentWorkspace) ||
+				!this.sessionListId.has(file.session.id)
+			) return;
+			called = true;
+			
+			const session = (file.session) as Session;
+			const sessionData = this.sessionListId.get(session.id)!;
+			
+			const newSessionData = {
+					...sessionData,
+					fileId: file.id,
+					name: file.name,
+					uri: file.uri
+				};
+			this.sessionListId.delete(sessionData.fileId);
+			this.sessionListId.set(file.id, newSessionData);
+			this.sessionListId.set(session.id, newSessionData);
+			
+			client.registerSession(session, this.currentEditor, {
+				filePath: getCurrentFilePath(file.uri),
+				joinWorkspaceURI: true
+			});
+			log("info", "Session changed for:\n", sessionData, "\n\nto:\n", newSessionData);
+			delay(500).then(() => {
+				called = false;
+			})
+		};
+		const removeSession = (file: Acode.EditorFile) => {
+			if (
+				!file.uri ||
+				!normalizePath(file.uri, "file").startsWith(this.currentWorkspace) ||
+				!this.sessionListId.has(file.id)
+			) return;
+
+			const sessionData = this.sessionListId.get(file.id)!;
+			const session = { id: sessionData.id } as Ace.EditSession;
+			client.closeDocument(session, () => {
+				log("info", "Session Closed for:", sessionData);
+			});
+
+			this.sessionListId.delete(file.id);
+			this.sessionListId.delete(session.id);
+		};
+		editorManager.files.forEach(addSession);
+
+		editorManager.on("new-file", addSession);
+		editorManager.on("rename-file", renameSession);
+		editorManager.on("remove-file", removeSession);
+		log("info", "Initialize Session handler");
+
+		this.onStop = () => {
+			editorManager.off("new-file", addSession);
+			editorManager.off("remove-file", renameSession);
+			editorManager.off("remove-file", removeSession);
+			log("info", "Session handler stopped");
+		};
 	}
 
 	async init(
@@ -315,9 +387,7 @@ export class LSP {
 			bindKey: shortcutKeys.devTest,
 			exec: async () => {
 				if (!getPluginSettings().debug || !this.client) return;
-				this.client.doComplete(editor, editor.session, (completionList) => {
-					log("info", "<dev>", "completions: ", completionList);
-				});
+				log("info", "Session and File ID", [...this.sessionListId.entries()]);
 			}
 		});
 	}

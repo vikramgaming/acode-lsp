@@ -1,7 +1,7 @@
 import { normalizePath, goToFile, log } from "./utils";
 import { fromRange, toRange } from "@/linters/type-converters/lsp/lsp-converters";
-import type { LSP } from "./main";
 import { callHierarchySelectUI, callHierarchyUI, destinationUI, page } from "./ui/ui";
+import type { LSP } from "./main";
 
 const { editor } = editorManager;
 const select = acode.require("select");
@@ -117,8 +117,8 @@ export default class LSPMethod implements Method {
 		if (!this.client || !serviceName) return;
 
 		this.client.getCodeActions(async (codeActions) => {
-			log("info", `Method Code Actions ${serviceName}:`, codeActions);
 			if (!this.client) return;
+			log("info", `Method Code Actions ${serviceName}:`, codeActions);
 
 			const actionByService = codeActions.find(action => action.service === serviceName);
 			if (!actionByService?.codeActions || actionByService.codeActions.length === 0) return;
@@ -181,7 +181,7 @@ export default class LSPMethod implements Method {
 		}, async (response: Promise<Hierarchy[] | null>) => {
 			const data = await response;
 			log("info", `Method Call Hierarchy ${serviceName}:`, data);
-			if (!data || !this.client) return;
+			if (!data) return;
 			callHierarchyUI(data, workspaceUri, (hierarchyData) => {
 				this.hierarchySelect(hierarchyData, serviceName, uri);
 			});
@@ -192,7 +192,7 @@ export default class LSPMethod implements Method {
 			{ text: "Incoming Calls", value: "incomingCalls" },
 			{ text: "outgoingCalls", value: "outgoingCalls" },
 		]).then((input) => {
-			if (!input || !this.client) return;
+			if (!this.client || !input) return;
 			const workspaceUri = this.client.workspaceUri;
 			page.hide();
 
@@ -215,7 +215,7 @@ export default class LSPMethod implements Method {
 				}
 			);
 		});
-	}
+	};
 	documentSymbol(): void {
 		const serviceName = this.getServiceName();
 		if (!this.client || !serviceName) return;
@@ -228,20 +228,20 @@ export default class LSPMethod implements Method {
 			log("info", `Method Document Symbol ${serviceName}:`, data);
 
 		});
-	}
+	};
 
 	goToDeclaration(): void {
 		this.goToLocation("declaration");
-	}
+	};
 	goToDefinition(): void {
 		this.goToLocation("definition");
-	}
+	};
 	goToTypeDefinition(): void {
 		this.goToLocation("typeDefinition");
-	}
+	};
 	goToImplementation(): void {
 		this.goToLocation("implementation");
-	}
+	};
 	findReferences(): void {
 		this.goToLocation("references", {
 			context: {

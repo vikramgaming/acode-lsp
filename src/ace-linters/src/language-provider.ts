@@ -294,7 +294,7 @@ export class LanguageProvider {
 						workspaceEdit.changes[uri].sort((a, b) =>
 							a.range.start.line - b.range.start.line ||
 							a.range.start.character - b.range.start.character
-						).forEach(edit => editorManager.editor.session.replace(toRange(edit.range), edit.newText));
+						).forEach(edit => file.session.replace(toRange(edit.range), edit.newText));
 						file.save();
 					}
 					continue;
@@ -325,7 +325,7 @@ export class LanguageProvider {
 							change.edits.sort((a, b) =>
 								a.range.start.line - b.range.start.line ||
 								a.range.start.character - b.range.start.character
-							).forEach(edit => editorManager.editor.session.replace(toRange(edit.range), edit.newText));
+							).forEach(edit => file.session.replace(toRange(edit.range), edit.newText));
 							file.save();
 						}
 						continue;
