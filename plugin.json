@@ -15,5 +15,6 @@
     "name": "",
     "email": "",
     "github": ""
-  }
+  },
+  "className": "ace-ryu-lsp"
 }

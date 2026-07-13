@@ -4,4 +4,4 @@
 /// <reference path="./types/xterm.d.ts" />
 /// <reference path="./types/html-tag-js.d.ts" />
 
-declare const app: any;
+declare const app: HTMLElement;

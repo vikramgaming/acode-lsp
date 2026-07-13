@@ -13,14 +13,12 @@ import {
 	delay,
 	normalizePath
 } from "./utils";
-import LSPMethod, { MethodName } from "./method";
+import LSPMethod from "./method";
 import { socketClients, SocketClients } from "./constant";
 
 const settings = acode.require("settings");
 const confirm = acode.require("confirm");
-const select = acode.require("select");
 const multiPrompt = acode.require("multiPrompt");
-const selectionMenu = acode.require("selectionMenu");
 const { editor } = editorManager;
 
 import type { LanguageClientConfig } from "@/linters/types/language-service";
@@ -39,12 +37,12 @@ interface SessionInfo {
 }
 
 export class LSP {
-	baseUrl: string | undefined;
+	baseUrl!: string;
 	currentWorkspace: string = "";
 	currentEditor!: import("ace-code/src/editor").Editor;
 	registeredLanguage = new Map<string, string>();
 	sessionListId = new Map<string, SessionInfo>();
-
+	
 	method: LSPMethod;
 	client: LanguageProvider | null = null;
 	private socket: WebSocket[] = [];
@@ -84,17 +82,18 @@ export class LSP {
 			const config = cfg as SocketClients;
 			const url = `${socketUrl.replace(/\/?$/, "/")}${config.serviceName}-${workspacePath}?args=${config.args.join(",")}&type=stdio`;
 			const socket = new WebSocket(url);
-			socket.onopen = () => {
+			socket.addEventListener("open", () => {
 				log("info", `Socket Connected for "${config.serviceName}" to: ${url}`);
-			};
-			socket.onclose = (e) => {
+			});
+			socket.addEventListener("close", (e) => {
 				log("warn", `Socket closed for ${config.serviceName}`, e);
 				this.stopLSP();
-			};
-			socket.onerror = (e) => {
+			});
+			socket.addEventListener("error", (e) => {
 				log("error", `Socket unexpected error for ${config.serviceName}`, e);
 				this.stopLSP();
-			};
+			})
+			
 			this.socket.push(socket);
 
 			config.modes.forEach(mode => this.registeredLanguage.set(mode.toLowerCase(), config.serviceName));
@@ -164,8 +163,10 @@ export class LSP {
 			joinWorkspaceURI: true
 		});
 		log("info", "Client", this.client);
+		log("info", "Socket", this.socket);
 
 		this.currentEditor = editor;
+		this.method.ui.workspaceUri = this.client.workspaceUri;
 		this.initSessionHandler(this.client);
 		editor.completers = editor.completers.filter(c => c.id != null && c.id !== "keywordCompleter");
 	}
@@ -281,6 +282,17 @@ export class LSP {
 			log("info", "Session handler stopped");
 		};
 	}
+	initStyle(url: string) {
+		const fs = acode.require("fs");
+		const dir = fs(`${url}style.css`);
+		
+		dir.readFile("utf-8").then(data => {
+			const style = document.createElement("style");
+			style.id = plugin.id;
+			style.textContent = data.replace(/\.plugin/g, `.${plugin.className}`);
+			document.head.appendChild(style);
+		});
+	}
 
 	async init(
 		_$page: Acode.WCPage,
@@ -288,45 +300,13 @@ export class LSP {
 		_cacheFileUrl: string,
 	): Promise<void> {
 		this.initAllCommands();
+		this.initStyle(this.baseUrl);
 
 		const languageFormatter: string[] = [];
 
 		for (const config of Object.values(socketClients)) {
 			config.extension.forEach(lang => languageFormatter.push(lang));
 		}
-
-		selectionMenu.add(async () => {
-			if (!this.client) return showToast("Start LSP first");
-			const { serviceName, clientConfig } = this.service;
-			if (!serviceName || !clientConfig) return showToast("This file extension not supported");
-
-			let options: (Acode.SelectItem & {
-				value: MethodName;
-			})[] = [
-					{ text: "Go To Document Link", value: "goToDocumentLink" },
-					{ text: "Go To Definition", value: "goToDefinition" },
-					{ text: "Go To Declaration", value: "goToDeclaration" },
-					{ text: "Go To TypeDefinition", value: "goToTypeDefinition" },
-					{ text: "Go To Implementation", value: "goToImplementation" },
-					{ text: "Call Hierarchy", value: "callHierarchy" },
-					{ text: "Find References", value: "findReferences" },
-					{ text: "Show Code Actions", value: "codeActions" },
-					{ text: "Rename Symbol", value: "renameSymbol" },
-					{ text: "Document Symbol", value: "documentSymbol" },
-					{ text: "Range Formatting", value: "rangeFormat" },
-				];
-			if (typeof clientConfig.supportedMethod === "object" && clientConfig.supportedMethod != null) {
-				options = options.filter(({ value }: { value: MethodName; }) => {
-					const v = clientConfig.supportedMethod?.[value];
-					return v === true || v === undefined;
-				});
-			}
-
-			const input: MethodName = await select("Select Command", options);
-			if (input) {
-				this.method.callMethod(input);
-			}
-		}, "LSP", "selected");
 
 		acode.registerFormatter(plugin.id, languageFormatter, async () => {
 			if (!this.client) return showToast("start LSP first");

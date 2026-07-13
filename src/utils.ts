@@ -1,4 +1,7 @@
+import type * as lsp from "vscode-languageserver-protocol"
 import plugin from "../plugin.json";
+import { AceRangeData } from "@/linters/types/language-service";
+import { fromRange } from "@/linters/type-converters/lsp/lsp-converters";
 
 const urlModule = acode.require("url");
 const openFolder = acode.require("openFolder");
@@ -63,13 +66,21 @@ export function getCurrentFilePath(fileUri = editorManager.activeFile.uri) {
 	if (!folder?.url) return fileUri;
 	return fileUri.replace(folder.url, "").replace(/^\/+/, '');
 }
-export function goToFile(fileUri: string, { row, column }: { row: number, column: number }) {
+export function goToFile(fileUri: string, pos: Ace.Point | lsp.Position, mark?: lsp.Range | AceRangeData) {
 	const uri = normalizePath(fileUri, "content");
 
 	function updateCursor(session = editorManager.activeFile.session) {
 		editor.clearSelection();
-		session.selection.moveCursorTo(row, column);
+		if ("row" in pos) {
+			session.selection.moveCursorTo(pos.row, pos.column);
+		} else {
+			session.selection.moveCursorTo(pos.line, pos.character);
+		}
 		editor.focus();
+		if (mark) {
+			const markerId = session.addMarker(aceRange(mark), `${plugin.className} highlight`, "text", true);
+			editor.once("changeSelection", () => session.removeMarker(markerId));
+		}
 	}
 	if (uri === editorManager.activeFile.uri) return updateCursor();
 
@@ -134,4 +145,20 @@ export function debouncePromise<T extends (...args: any[]) => Promise<any>>(
 			resolve(await fn(...args));
 		}, delay);
 	});
+}
+
+export function aceRange(range: lsp.Range | AceRangeData) {
+	let r: lsp.Range;
+	if ("line" in range.start) {
+		r = range as lsp.Range;
+	} else {
+		r = fromRange(range as AceRangeData);
+	};
+	const Range = ace.require("ace/range").Range;
+	return new Range(
+		r.start.line,
+		r.start.character,
+		r.end.line,
+		r.end.character
+	) as Ace.Range
 }

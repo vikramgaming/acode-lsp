@@ -99,4 +99,4 @@ export const socketClients = {
 	        }
 		}
 	},
-} satisfies Record<string, SocketClients>
+} satisfies Record<string, SocketClients>;
