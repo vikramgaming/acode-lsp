@@ -1,37 +1,28 @@
-import { normalizePath, goToFile, log, showToast } from "./utils";
+import { normalizePath, goToFile, log, showToast } from "../utils";
 import { fromRange, toRange } from "@/linters/type-converters/lsp/lsp-converters";
-import UIPage from "./ui/ui";
-import type { LSP } from "./main";
+import UIMethodPage from "../ui/ui";
+import type { LSP } from "../main";
 import type * as lsp from "vscode-languageserver-protocol";
 
 const { editor } = editorManager;
 const select = acode.require("select");
 const prompt = acode.require("prompt");
 
-interface Method {
-	goToDocumentLink(): void;
-	goToDefinition(): void;
-	goToDeclaration(): void;
-	goToTypeDefinition(): void;
-	goToImplementation(): void;
-	findReferences(): void;
-	codeActions(): void;
-	renameSymbol(): void;
-	callHierarchy(): void;
-	documentSymbol(): void;
-	rangeFormat(): void;
-}
+type Method = {
+	[M in keyof lsp.ServerCapabilities]: (...args: any) => any
+};
 
-export type MethodName = keyof Method;
+type MethodName = keyof Method;
 
 export default class LSPMethod implements Method {
 	private lsp: LSP;
-	ui: UIPage;
+	ui: UIMethodPage;
 	currentMethod: MethodName | "" = "";
+	methodListener: MethodListener;
 
 	constructor(lsp: LSP) {
 		this.lsp = lsp;
-		this.ui = new UIPage();
+		this.ui = new UIMethodPage(this);
 		const selectionMenu = acode.require("selectionMenu");
 
 		selectionMenu.add(async () => {
@@ -42,36 +33,42 @@ export default class LSPMethod implements Method {
 			let options: (Acode.SelectItem & {
 				value: MethodName;
 			})[] = [
-					{ text: "Go To Document Link", value: "goToDocumentLink" },
-					{ text: "Go To Definition", value: "goToDefinition" },
-					{ text: "Go To Declaration", value: "goToDeclaration" },
-					{ text: "Go To TypeDefinition", value: "goToTypeDefinition" },
-					{ text: "Go To Implementation", value: "goToImplementation" },
-					{ text: "Call Hierarchy", value: "callHierarchy" },
-					{ text: "Find References", value: "findReferences" },
-					{ text: "Show Code Actions", value: "codeActions" },
-					{ text: "Rename Symbol", value: "renameSymbol" },
-					{ text: "Document Symbol", value: "documentSymbol" },
-					{ text: "Range Formatting", value: "rangeFormat" },
+					{ text: "Go To Document Link", value: "documentLinkProvider" },
+					{ text: "Go To Definition", value: "definitionProvider" },
+					{ text: "Go To Declaration", value: "declarationProvider" },
+					{ text: "Go To TypeDefinition", value: "typeDefinitionProvider" },
+					{ text: "Go To Implementation", value: "implementationProvider" },
+					{ text: "Call Hierarchy", value: "callHierarchyProvider" },
+					{ text: "Find References", value: "referencesProvider" },
+					{ text: "Show Code Actions", value: "codeActionProvider" },
+					{ text: "Rename Symbol", value: "renameProvider" },
+					{ text: "Document Symbol", value: "documentSymbolProvider" },
+					{ text: "Range Formatting", value: "documentRangeFormattingProvider" },
 				];
-			if (clientConfig.supportedMethod != null) {
-				options = options.filter(({ value }: { value: MethodName; }) => {
-					const v = clientConfig.supportedMethod?.[value];
-					return v === true || v === undefined;
-				});
-			}
+			options = options.filter((select) => {
+				return this.isSupportedMethod(select.value);
+			});
 
 			const input: MethodName = await select("Select Command", options);
 			if (input) {
-				this.callMethod(input);
+				this.currentMethod = input;
+				(this as any)[input]();
 			}
 		}, "LSP", "selected");
 	}
 	get client() {
 		return this.lsp.client;
 	}
+	get workspaceUri() {
+		return this.lsp.client!.workspaceUri;
+	}
 	getServiceName(): string | undefined {
 		return this.lsp.service.serviceName;
+	}
+	isSupportedMethod(methodName: MethodName): boolean {
+		const serviceName = this.getServiceName();
+		if (!serviceName) return false;
+		return this.lsp.serviceCapabilities?.[serviceName]?.[methodName] ? true : false;
 	}
 	getSelectionRange(): import("vscode-languageserver-types").Range {
 		return fromRange(editor.getSelectionRange());
@@ -79,14 +76,11 @@ export default class LSPMethod implements Method {
 	getFileUri(): string {
 		return normalizePath(editorManager.activeFile.uri, "file");
 	}
-	callMethod(name: MethodName): void {
-		this.currentMethod = name;
-		this[name]();
-	}
-	format(): void {
+
+	documentFormattingProvider(): void {
 		this.execFormat("formatting");
 	}
-	rangeFormat(): void {
+	documentRangeFormattingProvider(): void {
 		this.execFormat("rangeFormatting", {
 			range: this.getSelectionRange()
 		});
@@ -121,7 +115,7 @@ export default class LSPMethod implements Method {
 				).forEach(edit => editor.session.replace(toRange(edit.range), edit.newText));
 			});
 	}
-	goToDocumentLink(): void {
+	documentLinkProvider(): void {
 		const serviceName = this.getServiceName();
 		if (!this.client || !serviceName) return;
 		const uri = this.getFileUri();
@@ -152,7 +146,7 @@ export default class LSPMethod implements Method {
 				}
 			});
 	}
-	codeActions(): void {
+	codeActionProvider(): void {
 		const serviceName = this.getServiceName();
 		if (!this.client || !serviceName) return;
 
@@ -184,7 +178,7 @@ export default class LSPMethod implements Method {
 			}
 		});
 	}
-	renameSymbol(): void {
+	renameProvider(): void {
 		const serviceName = this.getServiceName();
 		if (!this.client || !serviceName) return;
 		prompt("Rename Symbol", editor.getSelectedText()).then((input) => {
@@ -209,7 +203,7 @@ export default class LSPMethod implements Method {
 				});
 		});
 	}
-	callHierarchy(): void {
+	callHierarchyProvider(): void {
 		const serviceName = this.getServiceName();
 		if (!this.client || !serviceName) return;
 		const uri = this.getFileUri();
@@ -219,11 +213,14 @@ export default class LSPMethod implements Method {
 			textDocument: { uri },
 			position: selectionRange.end,
 		} satisfies lsp.CallHierarchyPrepareParams,
-			async (response: Promise<lsp.CallHierarchyItem[] | null>) => {
+			async (response: Promise<lsp.TypeHierarchyItem[] | null>) => {
 				const data = await response;
 				log("info", `Method Call Hierarchy ${serviceName}:`, data);
 				if (!data) return;
-				this.ui.callhierarchy(data, (item) => this.hierarchySelect(item, serviceName, uri));
+				const normalizeData = data.filter(item => item.uri.startsWith(this.workspaceUri));
+				if (normalizeData.length === 0) return;
+				
+				this.ui.callhierarchy(normalizeData, (item) => this.hierarchySelect(item, serviceName, uri));
 			});
 	}
 	private hierarchySelect(item: lsp.CallHierarchyItem, serviceName: string, originUri: string): void {
@@ -239,16 +236,23 @@ export default class LSPMethod implements Method {
 					const data = await response;
 					log("info", `Method ${input} ${serviceName}:`, data);
 					if (!data) return;
-					if (data.every(item => "from" in item)) {
-						this.ui.hierarchyIncomingCalls(data);
-					} else if (data.every(item => "to" in item)) {
-						this.ui.hierarchyOutGoingCalls(data, originUri);
+					
+					const normalizeData = data.filter(item => {
+						if ("from" in item) return item.from.uri.startsWith(this.workspaceUri)
+						return item.to.uri.startsWith(this.workspaceUri)
+					});
+					if (normalizeData.length === 0) return;
+					
+					if (normalizeData.every(item => "from" in item)) {
+						this.ui.hierarchyIncomingCalls(normalizeData);
+					} else if (normalizeData.every(item => "to" in item)) {
+						this.ui.hierarchyOutGoingCalls(normalizeData, originUri);
 					}
 				}
 			);
 		});
 	};
-	documentSymbol(): void {
+	documentSymbolProvider(): void {
 		const serviceName = this.getServiceName();
 		if (!this.client || !serviceName) return;
 		const uri = this.getFileUri();
@@ -263,19 +267,19 @@ export default class LSPMethod implements Method {
 			});
 	};
 
-	goToDeclaration(): void {
+	declarationProvider(): void {
 		this.goToLocation("declaration");
 	};
-	goToDefinition(): void {
+	definitionProvider(): void {
 		this.goToLocation("definition");
 	};
-	goToTypeDefinition(): void {
+	typeDefinitionProvider(): void {
 		this.goToLocation("typeDefinition");
 	};
-	goToImplementation(): void {
+	implementationProvider(): void {
 		this.goToLocation("implementation");
 	};
-	findReferences(): void {
+	referencesProvider(): void {
 		this.goToLocation("references", {
 			context: {
 				includeDeclaration: true
@@ -300,11 +304,13 @@ export default class LSPMethod implements Method {
 				log("info", `Method ${methodName} ${serviceName}:`, result);
 				if (!result) return;
 				const data = Array.isArray(result) ? result : [result];
-				this.ui.destination(data, methodName);
+				const normalizeData = data.filter(loc => loc.uri.startsWith(this.workspaceUri));
+				if (normalizeData.length === 0) return;
+				
+				this.ui.destination(normalizeData, methodName);
 			}
 		);
 	}
 }
-
 
 type goToLocationMethod = "declaration" | "definition" | "typeDefinition" | "implementation" | "references";

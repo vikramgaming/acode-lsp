@@ -1,0 +1,11 @@
+{
+	"compilerOptions": {
+		"typeRoots": [
+			"../types"
+		],
+		"types": [
+			"acode-plugin-types"
+		],
+	},
+	"extends": "../tsconfig.json"
+}

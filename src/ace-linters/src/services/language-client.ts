@@ -1,5 +1,6 @@
 import * as rpc from 'vscode-ws-jsonrpc';
 import * as lsp from "vscode-languageserver-protocol";
+import { log } from "../../../utils";
 import {
     BrowserMessageReader,
     BrowserMessageWriter,
@@ -24,6 +25,7 @@ export class LanguageClient extends BaseService implements LanguageService {
     private requestsQueue: Function[] = [];
     callbackId = 0;
     callbacks = {};
+    static initializeCallback: ((result: lsp.InitializeResult, serviceName: string) => void) | null = null;
 
     serverData: LanguageClientConfig;
     ctx;
@@ -300,6 +302,8 @@ export class LanguageClient extends BaseService implements LanguageService {
             this.isInitialized = true;
             this.serviceCapabilities = params.capabilities as lsp.ServerCapabilities;
             const serviceName = this.serviceName;
+            if (LanguageClient.initializeCallback) LanguageClient.initializeCallback(params, serviceName);
+            
             Object.keys(this.documents).forEach((documentUri) => {
                 const postMessage = {
                     "type": MessageType.capabilitiesChange,

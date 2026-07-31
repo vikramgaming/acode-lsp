@@ -79,10 +79,7 @@ export abstract class BaseService<OptionsType extends ServiceOptions = ServiceOp
 			inlineCompletion: {
 				dynamicRegistration: true
 			},
-			documentSymbol: {
-				dynamicRegistration: false,
-				hierarchicalDocumentSymbolSupport: true,
-			},
+			
 			documentLink: {
 				dynamicRegistration: false
 			},
@@ -92,18 +89,27 @@ export abstract class BaseService<OptionsType extends ServiceOptions = ServiceOp
 			definition: {
 				dynamicRegistration: false
 			},
-			implementation: {
+			typeDefinition: {
 				dynamicRegistration: false
 			},
-			typeDefinition: {
+			implementation: {
 				dynamicRegistration: false
 			},
 			references: {
 				dynamicRegistration: false
 			},
+			callHierarchy: {
+				dynamicRegistration: false
+			},
+			documentSymbol: {
+				dynamicRegistration: false
+			},
 			rename: {
 				dynamicRegistration: false
 			},
+			rangeFormatting: {
+				dynamicRegistration: false
+			}
 		},
 		window: {
 			showDocument: {

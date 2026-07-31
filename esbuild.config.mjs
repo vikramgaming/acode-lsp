@@ -1,5 +1,6 @@
 import * as esbuild from "esbuild";
 import { exec } from "child_process";
+import { sassPlugin } from "esbuild-sass-plugin";
 
 const isServe = process.argv.includes("--serve");
 
@@ -26,13 +27,16 @@ const zipPlugin = {
 
 // Base build configuration
 let buildConfig = {
-  entryPoints: ["src/main.ts", "src/style.css"],
-  bundle: true,
-  minify: true,
-  logLevel: "info",
-  color: true,
-  outdir: "dist",
-  plugins: [zipPlugin],
+	entryPoints: ["src/main.ts", "src/style.scss"],
+	bundle: true,
+	minify: true,
+	logLevel: "info",
+	color: true,
+	outdir: "dist",
+	plugins: [
+  		zipPlugin, 
+  		sassPlugin(),
+  	],
 };
 
 // Main function to handle both serve and production builds

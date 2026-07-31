@@ -1,5 +1,4 @@
 import { LanguageClientConfig } from "@/linters/types/language-service"
-import type { MethodName } from "./method";
 
 export interface SocketClients {
 	modes: string[],
@@ -7,21 +6,17 @@ export interface SocketClients {
 	args: string[],
 	features?: LanguageClientConfig["features"],
 	extension: string[],
-	supportedMethod?: Partial<Record<MethodName, boolean>>,
 	initializationOptions?: LanguageClientConfig["initializationOptions"],
 	serviceInstance?: LanguageClientConfig["serviceInstance"],
 	options?: LanguageClientConfig["options"]
 }
+
 export const socketClients = {
 	typescript: {
 		modes: ["javascript", "typescript", "jsx", "tsx"],
 		serviceName: "typescript",
 		args: ["typescript-language-server", "--stdio"],
 		extension: ["js", "ts", "jsx", "tsx"],
-		supportedMethod: {
-			goToDocumentLink: false,
-			goToDeclaration: false,
-		},
 		initializationOptions: {
 			typescript: {
 				format: {
@@ -43,12 +38,6 @@ export const socketClients = {
 			semanticTokens: false,
 		},
 		extension: ["css", "scss", "less"],
-		supportedMethod: {
-			goToDeclaration: false,
-			goToTypeDefinition: false,
-			goToImplementation: false,
-			callHierarchy: false,
-		}
 	},
 	html: {
 		modes: ["html"],
@@ -58,14 +47,6 @@ export const socketClients = {
 			semanticTokens: false,
 		},
 		extension: ["html"],
-		supportedMethod: {
-			goToDeclaration: false,
-			goToTypeDefinition: false,
-			goToImplementation: false,
-			findReferences: false,
-			renameSymbol: false,
-			callHierarchy: false,
-		}
 	},
 	json: {
 		modes: ["json", "json5"],
@@ -77,18 +58,11 @@ export const socketClients = {
 			semanticTokens: false,
 		},
 		extension: ["json", "json5"],
-		supportedMethod: {
-			goToDefinition: false,
-			goToDeclaration: false,
-			goToTypeDefinition: false,
-			goToImplementation: false,
-			callHierarchy: false
-		},
 		initializationOptions: {
 			json: {
 	            schemas: [
 	                {
-	                    fileMatch: ["*.tsconfig.json", "tsconfig.json", "tsconfig.*.json"],
+	                    fileMatch: ["*tsconfig.json", "tsconfig.json", "tsconfig*.json"],
 	                    url: "https://json.schemastore.org/tsconfig",
 	                },
 	                {

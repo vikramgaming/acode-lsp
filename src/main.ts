@@ -13,7 +13,7 @@ import {
 	delay,
 	normalizePath
 } from "./utils";
-import LSPMethod from "./method";
+import LSPMethod from "./Method/method";
 import { socketClients, SocketClients } from "./constant";
 
 const settings = acode.require("settings");
@@ -21,6 +21,7 @@ const confirm = acode.require("confirm");
 const multiPrompt = acode.require("multiPrompt");
 const { editor } = editorManager;
 
+import type * as lsp from "vscode-languageserver-protocol";
 import type { LanguageClientConfig } from "@/linters/types/language-service";
 import type { LanguageProvider } from "@/linters/language-provider";
 
@@ -42,11 +43,13 @@ export class LSP {
 	currentEditor!: import("ace-code/src/editor").Editor;
 	registeredLanguage = new Map<string, string>();
 	sessionListId = new Map<string, SessionInfo>();
+	serviceCapabilities: Record<string, lsp.InitializeResult["capabilities"]> = {};
 	
 	method: LSPMethod;
 	client: LanguageProvider | null = null;
 	private socket: WebSocket[] = [];
 	private onStopFunctions: (() => void)[] = [];
+	private onStartFunctions: (() => void)[] = [];
 
 	constructor() {
 		if (!settings.value[plugin.id]) {
@@ -67,6 +70,9 @@ export class LSP {
 	set onStop(fn: () => void) {
 		this.onStopFunctions.push(fn);
 	}
+	set onStart(fn: () => void) {
+		this.onStartFunctions.push(fn);
+	}
 	get service() {
 		const mode = (editor.session as Session).$modeId.replace("ace/mode/", "");
 		const serviceName = this.registeredLanguage.get(mode);
@@ -80,7 +86,7 @@ export class LSP {
 
 		for (const cfg of Object.values(socketClients)) {
 			const config = cfg as SocketClients;
-			const url = `${socketUrl.replace(/\/?$/, "/")}${config.serviceName}-${workspacePath}?args=${config.args.join(",")}&type=stdio`;
+			const url = `${socketUrl.replace(/\/?$/, "/")}${config.serviceName}-${workspacePath}?args=${config.args.join(",")}`;
 			const socket = new WebSocket(url);
 			socket.addEventListener("open", () => {
 				log("info", `Socket Connected for "${config.serviceName}" to: ${url}`);
@@ -97,7 +103,7 @@ export class LSP {
 			this.socket.push(socket);
 
 			config.modes.forEach(mode => this.registeredLanguage.set(mode.toLowerCase(), config.serviceName));
-
+			
 			const result: LanguageClientConfig = {
 				modes: config.modes.join("|"),
 				serviceName: config.serviceName,
@@ -166,17 +172,16 @@ export class LSP {
 		log("info", "Socket", this.socket);
 
 		this.currentEditor = editor;
-		this.method.ui.workspaceUri = this.client.workspaceUri;
-		this.initSessionHandler(this.client);
 		editor.completers = editor.completers.filter(c => c.id != null && c.id !== "keywordCompleter");
+		this.onStartFunctions.forEach(fn => fn());
 	}
 	stopLSP() {
 		if (!this.client) return;
 
 		for (const id in this.socket) {
 			this.socket[id].close();
-			delete this.socket[id];
 		}
+		this.socket = [];
 		this.client?.unregisterEditor(this.currentEditor, true);
 		this.client?.closeConnection?.();
 		this.client = null;
@@ -192,7 +197,7 @@ export class LSP {
 			this.startLSP(workspacePath);
 		});
 	}
-	initSessionHandler(client: LanguageProvider) {
+	setSessionHandler() {
 		const addSession = (file: Acode.EditorFile) => {
 			if (
 				!file.uri ||
@@ -200,6 +205,7 @@ export class LSP {
 			) return;
 
 			delay(500).then(() => {
+				if (!this.client) return;
 				const session = (file.session) as Session;
 				const modeId = session.$modeId.split("/").pop()!;
 				if (!this.registeredLanguage.has(modeId)) return;
@@ -213,7 +219,7 @@ export class LSP {
 				this.sessionListId.set(file.id, sessionData);
 				this.sessionListId.set(session.id, sessionData);
 
-				client.registerSession(session, this.currentEditor, {
+				this.client.registerSession(session, this.currentEditor, {
 					filePath: getCurrentFilePath(file.uri),
 					joinWorkspaceURI: true
 				});
@@ -226,7 +232,8 @@ export class LSP {
 				called ||
 				!file.uri ||
 				!normalizePath(file.uri, "file").startsWith(this.currentWorkspace) ||
-				!this.sessionListId.has(file.session.id)
+				!this.sessionListId.has(file.session.id) ||
+				!this.client
 			) return;
 			called = true;
 			
@@ -243,7 +250,7 @@ export class LSP {
 			this.sessionListId.set(file.id, newSessionData);
 			this.sessionListId.set(session.id, newSessionData);
 			
-			client.registerSession(session, this.currentEditor, {
+			this.client.registerSession(session, this.currentEditor, {
 				filePath: getCurrentFilePath(file.uri),
 				joinWorkspaceURI: true
 			});
@@ -256,12 +263,13 @@ export class LSP {
 			if (
 				!file.uri ||
 				!normalizePath(file.uri, "file").startsWith(this.currentWorkspace) ||
-				!this.sessionListId.has(file.id)
+				!this.sessionListId.has(file.id) ||
+				!this.client
 			) return;
 
 			const sessionData = this.sessionListId.get(file.id)!;
 			const session = { id: sessionData.id } as Ace.EditSession;
-			client.closeDocument(session, () => {
+			this.client.closeDocument(session, () => {
 				log("info", "Session Closed for:", sessionData);
 			});
 
@@ -269,17 +277,19 @@ export class LSP {
 			this.sessionListId.delete(session.id);
 		};
 		editorManager.files.forEach(addSession);
-
-		editorManager.on("new-file", addSession);
-		editorManager.on("rename-file", renameSession);
-		editorManager.on("remove-file", removeSession);
-		log("info", "Initialize Session handler");
+		
+		this.onStart = () => {
+			log("info", "Initialize Session handler");
+			editorManager.on("new-file", addSession);
+			editorManager.on("rename-file", renameSession);
+			editorManager.on("remove-file", removeSession);
+		}
 
 		this.onStop = () => {
+			log("info", "Removing Session handler");
 			editorManager.off("new-file", addSession);
 			editorManager.off("remove-file", renameSession);
 			editorManager.off("remove-file", removeSession);
-			log("info", "Session handler stopped");
 		};
 	}
 	initStyle(url: string) {
@@ -301,6 +311,7 @@ export class LSP {
 	): Promise<void> {
 		this.initAllCommands();
 		this.initStyle(this.baseUrl);
+		this.setSessionHandler();
 
 		const languageFormatter: string[] = [];
 
@@ -311,9 +322,14 @@ export class LSP {
 		acode.registerFormatter(plugin.id, languageFormatter, async () => {
 			if (!this.client) return showToast("start LSP first");
 
-			this.method.format();
+			this.method.documentFormattingProvider();
 		});
 		log("info", "Registered Formatter for language", languageFormatter);
+		
+		LanguageClient.initializeCallback = (result, serviceName) => {
+			log("info", `Initialize for serviceName ${serviceName}`, result);
+			this.serviceCapabilities[serviceName] = result.capabilities;
+		}
 	}
 	initAllCommands() {
 		const shortcutKeys: Record<string, ReturnType<typeof normalizeShortcutKeys>> = {};
@@ -359,7 +375,7 @@ export class LSP {
 					log("error", "Cannot find the client");
 					return showToast("Start LSP first");
 				}
-				this.method.format();
+				this.method.documentFormattingProvider();
 			}
 		});
 		editor.commands.addCommand({
@@ -367,7 +383,7 @@ export class LSP {
 			bindKey: shortcutKeys.devTest,
 			exec: async () => {
 				if (!getPluginSettings().debug || !this.client) return;
-				log("info", "Session and File ID", [...this.sessionListId.entries()]);
+				log("info", "Testing");
 			}
 		});
 	}

@@ -1,0 +1,8 @@
+{
+	"compilerOptions": {
+		"moduleResolution": "node16",
+		"lib": ["ES2024","DOM.Iterable", "DOM"],
+		"types": ["node"]
+	},
+	"extends": "../tsconfig.json"
+}

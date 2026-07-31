@@ -1,0 +1,92 @@
+.plugin {
+
+	/* UI */
+	&.page .container {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 10px;
+		width: 100vw;
+
+		>* {
+			width: 92vw;
+		}
+
+		.filecard {
+			min-height: 50px;
+			display: grid;
+			grid-template-columns: 50px 1fr;
+			border: 1px solid cyan;
+			border-radius: 10px;
+			align-items: center;
+			padding: 3px;
+
+			>div {
+				display: flex;
+				flex-direction: column;
+				border-radius: 5px;
+				gap: 5px;
+
+				.path {
+					word-break: break-all;
+				}
+			}
+
+			+.list {
+				.poscard, .namecard{
+					min-height: 40px;
+					margin-left: 10px;
+					padding: 3px;
+					border: 1px solid purple;
+					border-radius: 5px;
+				}
+
+				.poscard {
+					text-align: center;
+					padding: 5px;
+					white-space: pre-line;
+				}
+
+				.namecard {
+					display: grid;
+					grid-template-columns: 1fr 40px;
+
+					.text {
+						display: flex;
+						align-items: center;
+						justify-content: center;
+						white-space: pre-line;
+					}
+
+					+.list .poscard {
+						min-height: 30px;
+						margin-left: 20px;
+						padding: 1px;
+						border: 1px solid lime;
+						border-radius: 5px;
+						width: calc(100% - 25px);
+					}
+				}
+			}
+		}
+
+		.icon {
+			margin: auto;
+			font-size: 1.25rem;
+		}
+	}
+
+	/* Marker */
+	&.mark {
+		&.highlight {
+			position: absolute;
+			z-index: 99;
+			border: .5px solid white;
+		}
+		&.link {
+			position: absolute;
+			z-index: 99;
+			border-bottom: .5px solid #551A8B;
+		}
+	}
+}

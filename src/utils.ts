@@ -1,4 +1,4 @@
-import type * as lsp from "vscode-languageserver-protocol"
+import type * as lsp from "vscode-languageserver-protocol";
 import plugin from "../plugin.json";
 import { AceRangeData } from "@/linters/types/language-service";
 import { fromRange } from "@/linters/type-converters/lsp/lsp-converters";
@@ -44,7 +44,7 @@ export function showToast(...message: any) {
 
 export function normalizePath(path: string, prefix?: "file" | "content") {
 	let normalized = urlModule.pathname(path);
-	normalized = normalized.replace(/^\/+/, '/');
+	normalized = decodeURIComponent(normalized.replace(/^\/+/, '/'));
 
 	if (prefix === "file") {
 		return `file://${normalized}`;
@@ -78,7 +78,7 @@ export function goToFile(fileUri: string, pos: Ace.Point | lsp.Position, mark?: 
 		}
 		editor.focus();
 		if (mark) {
-			const markerId = session.addMarker(aceRange(mark), `${plugin.className} highlight`, "text", true);
+			const markerId = setMark(session, mark)
 			editor.once("changeSelection", () => session.removeMarker(markerId));
 		}
 	}
@@ -161,4 +161,26 @@ export function aceRange(range: lsp.Range | AceRangeData) {
 		r.end.line,
 		r.end.character
 	) as Ace.Range
+}
+
+export function setMark(session: Ace.EditSession, markRange: lsp.Range | AceRangeData, clazz = "highlight") {
+	const markerId = session.addMarker(aceRange(markRange), `${plugin.className} mark ${clazz}`, "text", true);
+	return markerId;
+}
+
+export function createPage(title: string) {
+	const page = acode.require('page');
+	const backButton = tag('span', {
+		className: 'icon arrow_back',
+		dataset: { action: 'back-btn' },
+		onclick: () => settingsPage.hide(),
+	});
+
+	const settingsPage = page(title, { lead: backButton });
+	settingsPage.className = `${plugin.className} page`;
+
+	settingsPage.show = () => {
+		app.append(settingsPage);
+	};
+	return settingsPage;
 }

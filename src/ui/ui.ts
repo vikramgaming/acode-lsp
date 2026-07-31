@@ -1,13 +1,14 @@
-import plugin from "../../plugin.json";
 import type * as lsp from "vscode-languageserver-protocol";
-import { delay, goToFile } from "../utils";
+import { delay, goToFile, createPage } from "../utils";
+import type Method from "../Method/method";
 
-export default class UIPage {
-	workspaceUri!: string;
+export default class UIMethodPage {
 	page: Acode.WCPage;
 	sideBtn;
+	method: Method;
 
-	constructor() {
+	constructor(method: Method) {
+		this.method = method;
 		this.page = createPage("LSP Method");
 		const sidebutton = acode.require("sidebutton");
 
@@ -18,6 +19,9 @@ export default class UIPage {
 			onclick: () => this.page.show()
 		});
 		this.sideBtn.show();
+	}
+	get workspaceUri() {
+		return this.method.workspaceUri;
 	}
 	private showUI(el: HTMLElement, title = "LSP Method") {
 		this.page.hide();
@@ -32,11 +36,8 @@ export default class UIPage {
 	}
 
 	destination(data: lsp.Location[], methodName: string) {
-		const normalizeData = data.filter(loc => loc.uri.startsWith(this.workspaceUri));
-		if (normalizeData.length === 0) return;
-
 		const container = createContainer();
-		const group = Object.groupBy(normalizeData, item => item.uri);
+		const group = Object.groupBy(data, item => item.uri);
 
 		for (const uri in group) {
 			const div = tag("div");
@@ -54,11 +55,8 @@ export default class UIPage {
 		this.showUI(container, methodName);
 	}
 	callhierarchy(data: lsp.CallHierarchyItem[], onClick: (item: lsp.CallHierarchyItem) => void) {
-		const normalizeData = data.filter(item => item.uri.startsWith(this.workspaceUri));
-		if (normalizeData.length === 0) return;
-
 		const container = createContainer();
-		const group = Object.groupBy(normalizeData, item => item.uri);
+		const group = Object.groupBy(data, item => item.uri);
 
 		for (const uri in group) {
 			const div = tag("div");
@@ -66,10 +64,10 @@ export default class UIPage {
 			const list = createList(filecard);
 			group[uri]?.forEach(item => {
 				const li = tag("div");
-				const nameCard = createNameCardBtn(item, 
+				const nameCard = createNameCardBtn(item,
 					() => onClick(item),
 					() => this.goToFile(item.uri, item.range.start, item.range)
-				)
+				);
 				li.append(nameCard);
 				list.append(li);
 			});
@@ -80,67 +78,85 @@ export default class UIPage {
 		this.showUI(container, "prepareCallHierarchy");
 	}
 	hierarchyIncomingCalls(data: lsp.CallHierarchyIncomingCall[]) {
-		const normalizeData = data.filter(item => item.from.uri.startsWith(this.workspaceUri));
-		if (normalizeData.length === 0) return;
-
-		const container = createContainer();
-		const group = Object.groupBy(normalizeData, item => item.from.uri);
-
-		for (const uri in group) {
-			const div = tag("div");
-			const filecard = createfilecard(uri.replace(this.workspaceUri, ""));
-			const list = createList(filecard);
-			group[uri]?.forEach(item => {
-				const div2 = tag("div");
-				const listPos = createList();
-				const nameCard = createNameCardBtn(item.from,
-					() => listPos.style.display = listPos.style.display === "none" ? "block" : "none",
-					() => this.goToFile(item.from.uri, item.from.range.start, item.from.range)
-				);
-				item.fromRanges.forEach(range => {
-					const posCard = createPosCard(range.start);
-					posCard.onclick = () => this.goToFile(item.from.uri, range.start, range);
-					listPos.append(posCard);
-				});
-				div2.append(nameCard, listPos);
-				list.append(div2);
-			});
-			div.append(filecard, list);
-			container.append(div);
-		}
-		this.showUI(container, "incomingCalls");
+		this.hierarchyCall(data, {
+			getUri: item => item.from.uri,
+			getTarget: item => item.from,
+			getRanges: item => item.fromRanges,
+			getRangeUri: item => item.from.uri,
+			title: "incomingCalls"
+		});
 	}
-	hierarchyOutGoingCalls(data: lsp.CallHierarchyOutgoingCall[], originUri: string) {
-		const normalizeData = data.filter(data => data.to.uri.startsWith(this.workspaceUri));
-		if (normalizeData.length === 0) return;
 
+	hierarchyOutGoingCalls(
+		data: lsp.CallHierarchyOutgoingCall[],
+		originUri: string
+	) {
+		this.hierarchyCall(data, {
+			getUri: item => item.to.uri,
+			getTarget: item => item.to,
+			getRanges: item => item.fromRanges,
+			getRangeUri: () => originUri,
+			title: "outgoingCalls"
+		});
+	}
+	private hierarchyCall<T>(
+		data: T[],
+		options: {
+			getUri: (item: T) => string;
+			getTarget: (item: T) => lsp.CallHierarchyItem;
+			getRanges: (item: T) => lsp.Range[];
+			getRangeUri: (item: T) => string;
+			title: string;
+		}
+	) {
 		const container = createContainer();
-		const group = Object.groupBy(normalizeData, item => item.to.uri);
+		const group = Object.groupBy(data, options.getUri);
 
 		for (const uri in group) {
 			const div = tag("div");
 			const filecard = createfilecard(uri.replace(this.workspaceUri, ""));
 			const list = createList(filecard);
+
 			group[uri]?.forEach(item => {
 				const div2 = tag("div");
 				const listPos = createList();
-				const nameCard = createNameCardBtn(item.to,
-					() => listPos.style.display = listPos.style.display === "none" ? "block" : "none",
-					() => this.goToFile(item.to.uri, item.to.range.start, item.to.range)
+
+				const target = options.getTarget(item);
+
+				const nameCard = createNameCardBtn(
+					target,
+					() => {
+						listPos.style.display =
+							listPos.style.display === "none" ? "block" : "none";
+					},
+					() => this.goToFile(
+						target.uri,
+						target.range.start,
+						target.range
+					)
 				);
-				item.fromRanges.forEach(range => {
+
+				options.getRanges(item).forEach(range => {
 					const posCard = createPosCard(range.start);
-					posCard.onclick = () => this.goToFile(originUri, range.start, range);
+					posCard.onclick = () =>
+						this.goToFile(
+							options.getRangeUri(item),
+							range.start,
+							range
+						);
+
 					listPos.append(posCard);
 				});
+
 				div2.append(nameCard, listPos);
 				list.append(div2);
 			});
+
 			div.append(filecard, list);
 			container.append(div);
 		}
 
-		this.showUI(container, "outgoingCalls");
+		this.showUI(container, options.title);
 	}
 }
 
@@ -148,23 +164,6 @@ function createContainer() {
 	return tag("div", {
 		className: "container"
 	});
-}
-
-function createPage(title: string) {
-	const page = acode.require('page');
-	const backButton = tag('span', {
-		className: 'icon arrow_back',
-		dataset: { action: 'back-btn' },
-		onclick: () => settingsPage.hide(),
-	});
-
-	const settingsPage = page(title, { lead: backButton });
-	settingsPage.className = `${plugin.className} page`;
-
-	settingsPage.show = () => {
-		app.append(settingsPage);
-	};
-	return settingsPage;
 }
 
 function createfilecard(uri: string) {
@@ -197,7 +196,7 @@ function createPosCard(pos: lsp.Position) {
 		textContent: `line: ${pos.line + 1}\ncharacter: ${pos.character}`
 	});
 }
-function createNameCardBtn({ name, detail }: { name: string, detail?:string }, onclickText: () => void, onclickBtn: () => void) {
+function createNameCardBtn({ name, detail }: { name: string, detail?: string; }, onclickText: () => void, onclickBtn: () => void) {
 	const container = tag("div", {
 		className: "namecard",
 	});
