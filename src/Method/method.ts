@@ -3,13 +3,23 @@ import { fromRange, toRange } from "@/linters/type-converters/lsp/lsp-converters
 import UIMethodPage from "../ui/ui";
 import type { LSP } from "../main";
 import type * as lsp from "vscode-languageserver-protocol";
+import type { LanguageProvider } from "@/linters/language-provider";
+import { Range } from "vscode-languageserver-types";
+import { isAfterOrEqual, isBeforeOrEqual } from "../utils";
 
 const { editor } = editorManager;
 const select = acode.require("select");
 const prompt = acode.require("prompt");
 
 type Method = {
-	[M in keyof lsp.ServerCapabilities]: (...args: any) => any
+	[M in keyof lsp.ServerCapabilities]: unknown;
+};
+
+type Params = {
+	client: LanguageProvider,
+	serviceName: string,
+	uri: string,
+	selectionRange: Range;
 };
 
 type MethodName = keyof Method;
@@ -18,7 +28,6 @@ export default class LSPMethod implements Method {
 	private lsp: LSP;
 	ui: UIMethodPage;
 	currentMethod: MethodName | "" = "";
-	methodListener: MethodListener;
 
 	constructor(lsp: LSP) {
 		this.lsp = lsp;
@@ -52,15 +61,17 @@ export default class LSPMethod implements Method {
 			const input: MethodName = await select("Select Command", options);
 			if (input) {
 				this.currentMethod = input;
-				(this as any)[input]();
+				((this as any)[input] as (params: Params) => void)({
+					client: lsp.client,
+					serviceName,
+					uri: this.getFileUri(),
+					selectionRange: this.getSelectionRange()
+				});
 			}
 		}, "LSP", "selected");
 	}
-	get client() {
-		return this.lsp.client;
-	}
 	get workspaceUri() {
-		return this.lsp.client!.workspaceUri;
+		return this.lsp.currentWorkspace;
 	}
 	getServiceName(): string | undefined {
 		return this.lsp.service.serviceName;
@@ -70,25 +81,22 @@ export default class LSPMethod implements Method {
 		if (!serviceName) return false;
 		return this.lsp.serviceCapabilities?.[serviceName]?.[methodName] ? true : false;
 	}
-	getSelectionRange(): import("vscode-languageserver-types").Range {
+	getSelectionRange(): Range {
 		return fromRange(editor.getSelectionRange());
 	}
 	getFileUri(): string {
 		return normalizePath(editorManager.activeFile.uri, "file");
 	}
 
-	documentFormattingProvider(): void {
-		this.execFormat("formatting");
+	documentFormattingProvider(params: Params): void {
+		this.execFormat(params, "formatting");
 	}
-	documentRangeFormattingProvider(): void {
-		this.execFormat("rangeFormatting", {
+	documentRangeFormattingProvider(params: Params): void {
+		this.execFormat(params, "rangeFormatting", {
 			range: this.getSelectionRange()
 		});
 	}
-	private execFormat(methodName: string, moreParams: Partial<lsp.DocumentRangeFormattingParams> = {}, options: Partial<lsp.DocumentFormattingParams["options"]> = {}) {
-		const serviceName = this.getServiceName();
-		if (!this.client || !serviceName) return;
-		const uri = this.getFileUri();
+	private execFormat({ client, serviceName, uri }: Params, methodName: string, moreParams: Partial<lsp.DocumentRangeFormattingParams> = {}, options: Partial<lsp.DocumentFormattingParams["options"]> = {}) {
 		const settings = acode.require("settings");
 		const defaultOptions = {
 			tabSize: settings.value.tabSize,
@@ -97,7 +105,7 @@ export default class LSPMethod implements Method {
 			insertFinalNewline: true,
 			trimFinalNewlines: true
 		};
-		this.client.sendRequest(serviceName, `textDocument/${methodName}`, {
+		client.sendRequest(serviceName, `textDocument/${methodName}`, {
 			textDocument: { uri },
 			options: {
 				...defaultOptions,
@@ -115,13 +123,8 @@ export default class LSPMethod implements Method {
 				).forEach(edit => editor.session.replace(toRange(edit.range), edit.newText));
 			});
 	}
-	documentLinkProvider(): void {
-		const serviceName = this.getServiceName();
-		if (!this.client || !serviceName) return;
-		const uri = this.getFileUri();
-		const selectionRange = this.getSelectionRange();
-
-		this.client.sendRequest(serviceName, "textDocument/documentLink", {
+	documentLinkProvider({ client, uri, serviceName, selectionRange }: Params): void {
+		client.sendRequest(serviceName, "textDocument/documentLink", {
 			textDocument: { uri }
 		} satisfies lsp.DocumentLinkParams,
 			async (reponse: Promise<lsp.DocumentLink[] | null>) => {
@@ -130,12 +133,12 @@ export default class LSPMethod implements Method {
 				if (!data) return;
 				for (let location of data) {
 					if (
-						selectionRange.end.character <= location.range.end.character &&
-						selectionRange.end.line <= location.range.end.line &&
-						selectionRange.start.character >= location.range.start.character &&
-						selectionRange.start.line >= location.range.start.line
+						isAfterOrEqual(selectionRange.start, location.start) && 
+						isBeforeOrEqual(selectionRange.end, location.end)
 					) {
 						if (!location.target) return;
+						log("info", "To Location", location);
+
 						if (location.target.startsWith("file:")) {
 							goToFile(location.target, { column: 0, row: 0 });
 						} else {
@@ -146,12 +149,8 @@ export default class LSPMethod implements Method {
 				}
 			});
 	}
-	codeActionProvider(): void {
-		const serviceName = this.getServiceName();
-		if (!this.client || !serviceName) return;
-
-		this.client.getCodeActions(async (codeActions) => {
-			if (!this.client) return;
+	codeActionProvider({ client, serviceName }: Params): void {
+		client.getCodeActions(async (codeActions) => {
 			log("info", `Method Code Actions ${serviceName}:`, codeActions);
 
 			const actionByService = codeActions.find(action => action.service === serviceName);
@@ -167,26 +166,22 @@ export default class LSPMethod implements Method {
 
 			const action = await select("Select Code Actions", options) as typeof options[number]["value"];
 			if (typeof action.command === "string") {
-				this.client.executeCommand(action.command, serviceName, (action as any)["arguments"]);
+				client.executeCommand(action.command, serviceName, (action as any)["arguments"]);
 			} else {
 				if (action.command) {
-					this.client.executeCommand(action.command.command, serviceName, action.command.arguments);
+					client.executeCommand(action.command.command, serviceName, action.command.arguments);
 				}
 				if ("edit" in action) {
-					this.client.applyEdit(action.edit!, serviceName);
+					client.applyEdit(action.edit!, serviceName);
 				}
 			}
 		});
 	}
-	renameProvider(): void {
-		const serviceName = this.getServiceName();
-		if (!this.client || !serviceName) return;
+	renameProvider({ client, serviceName, uri, selectionRange }: Params): void {
 		prompt("Rename Symbol", editor.getSelectedText()).then((input) => {
-			if (input == null || !this.client) return;
-			const uri = this.getFileUri();
-			const selectionRange = this.getSelectionRange();
+			if (input == null) return;
 
-			this.client.sendRequest(serviceName, "textDocument/rename", {
+			client.sendRequest(serviceName, "textDocument/rename", {
 				textDocument: { uri },
 				position: selectionRange.end,
 				newName: input
@@ -203,13 +198,8 @@ export default class LSPMethod implements Method {
 				});
 		});
 	}
-	callHierarchyProvider(): void {
-		const serviceName = this.getServiceName();
-		if (!this.client || !serviceName) return;
-		const uri = this.getFileUri();
-		const selectionRange = this.getSelectionRange();
-
-		this.client.sendRequest(serviceName, "textDocument/prepareCallHierarchy", {
+	callHierarchyProvider({ client, serviceName, uri, selectionRange }: Params): void {
+		client.sendRequest(serviceName, "textDocument/prepareCallHierarchy", {
 			textDocument: { uri },
 			position: selectionRange.end,
 		} satisfies lsp.CallHierarchyPrepareParams,
@@ -219,30 +209,29 @@ export default class LSPMethod implements Method {
 				if (!data) return;
 				const normalizeData = data.filter(item => item.uri.startsWith(this.workspaceUri));
 				if (normalizeData.length === 0) return;
-				
-				this.ui.callhierarchy(normalizeData, (item) => this.hierarchySelect(item, serviceName, uri));
+
+				this.ui.callhierarchy(normalizeData, (item) => this.hierarchySelect(client, item, serviceName, uri));
 			});
 	}
-	private hierarchySelect(item: lsp.CallHierarchyItem, serviceName: string, originUri: string): void {
+	private hierarchySelect(client: LanguageProvider, item: lsp.CallHierarchyItem, serviceName: string, originUri: string): void {
 		select("Select Method", [
 			{ text: "Incoming Calls", value: "incomingCalls" },
 			{ text: "outgoingCalls", value: "outgoingCalls" },
 		]).then((input) => {
-			if (!this.client || !input) return;
 			this.ui.page.hide();
 
-			this.client.sendRequest(serviceName, `callHierarchy/${input}`, { item },
+			client.sendRequest(serviceName, `callHierarchy/${input}`, { item },
 				async (response: Promise<(lsp.CallHierarchyIncomingCall | lsp.CallHierarchyOutgoingCall)[] | null>) => {
 					const data = await response;
 					log("info", `Method ${input} ${serviceName}:`, data);
 					if (!data) return;
-					
+
 					const normalizeData = data.filter(item => {
-						if ("from" in item) return item.from.uri.startsWith(this.workspaceUri)
-						return item.to.uri.startsWith(this.workspaceUri)
+						if ("from" in item) return item.from.uri.startsWith(this.workspaceUri);
+						return item.to.uri.startsWith(this.workspaceUri);
 					});
 					if (normalizeData.length === 0) return;
-					
+
 					if (normalizeData.every(item => "from" in item)) {
 						this.ui.hierarchyIncomingCalls(normalizeData);
 					} else if (normalizeData.every(item => "to" in item)) {
@@ -252,12 +241,8 @@ export default class LSPMethod implements Method {
 			);
 		});
 	};
-	documentSymbolProvider(): void {
-		const serviceName = this.getServiceName();
-		if (!this.client || !serviceName) return;
-		const uri = this.getFileUri();
-
-		this.client.sendRequest(serviceName, "textDocument/documentSymbol", {
+	documentSymbolProvider({ client, serviceName, uri }: Params): void {
+		client.sendRequest(serviceName, "textDocument/documentSymbol", {
 			textDocument: { uri },
 		} satisfies lsp.DocumentSymbolParams,
 			async (response: Promise<(lsp.DocumentSymbol)[] | null>) => {
@@ -267,33 +252,28 @@ export default class LSPMethod implements Method {
 			});
 	};
 
-	declarationProvider(): void {
-		this.goToLocation("declaration");
+	declarationProvider(params: Params): void {
+		this.goToLocation(params, "declaration");
 	};
-	definitionProvider(): void {
-		this.goToLocation("definition");
+	definitionProvider(params: Params): void {
+		this.goToLocation(params, "definition");
 	};
-	typeDefinitionProvider(): void {
-		this.goToLocation("typeDefinition");
+	typeDefinitionProvider(params: Params): void {
+		this.goToLocation(params, "typeDefinition");
 	};
-	implementationProvider(): void {
-		this.goToLocation("implementation");
+	implementationProvider(params: Params): void {
+		this.goToLocation(params, "implementation");
 	};
-	referencesProvider(): void {
-		this.goToLocation("references", {
+	referencesProvider(params: Params): void {
+		this.goToLocation(params, "references", {
 			context: {
 				includeDeclaration: true
 			},
 		});
 	}
 
-	private goToLocation(methodName: goToLocationMethod, moreParams: Partial<lsp.ReferenceParams> = {}) {
-		const serviceName = this.getServiceName();
-		if (!this.client || !serviceName) return;
-		const uri = this.getFileUri();
-		const selectionRange = this.getSelectionRange();
-
-		this.client.sendRequest(serviceName, `textDocument/${methodName}`,
+	private goToLocation({ client, serviceName, uri, selectionRange }: Params, methodName: goToLocationMethod, moreParams: Partial<lsp.ReferenceParams> = {}) {
+		client.sendRequest(serviceName, `textDocument/${methodName}`,
 			{
 				textDocument: { uri },
 				position: selectionRange.end,
@@ -306,7 +286,7 @@ export default class LSPMethod implements Method {
 				const data = Array.isArray(result) ? result : [result];
 				const normalizeData = data.filter(loc => loc.uri.startsWith(this.workspaceUri));
 				if (normalizeData.length === 0) return;
-				
+
 				this.ui.destination(normalizeData, methodName);
 			}
 		);

@@ -85,7 +85,7 @@ declare namespace Acode {
 			event: "add-folder" | "remove-folder" | "update-folder",
 			listener: (ev: { url: string; name: string }) => void,
 		): void;
-		on(event: EditorEvent, listener: (...args: any[]) => void): void;
+		on(event: EditorEvent | string, listener: (...args: any[]) => void): void;
 
 		/** This function removes a listener for the specified event. */
 		off(event: string, listener: (...args: any[]) => void): void;

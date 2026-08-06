@@ -184,3 +184,37 @@ export function createPage(title: string) {
 	};
 	return settingsPage;
 }
+
+export function callbackOnce<FN extends (...args: any) => any>(fn: FN): (...args: Parameters<FN>) => void {
+	let called = false;
+	
+	return (...args: Parameters<FN>): void => {
+		if (called) return;
+		called = true;
+		
+		fn(...args);
+		delay(500).then(() => {
+			called = false;
+		})
+	}
+}
+
+export function debounce<FN extends (...args: any) => any>(fn: FN, ms: number): (...args: Parameters<FN>) => void {
+	let timeout: ReturnType<typeof setTimeout>;
+	
+	return (...args: Parameters<FN>): void => {
+		clearTimeout(timeout);
+		timeout = setTimeout(() => {
+			fn(...args);
+		}, ms)
+	}
+}
+
+export function comparePosition(cursor: lsp.Position, pos: lsp.Position) {
+	if (cursor.line !== pos.line) {
+		return cursor.line - pos.line
+	}
+	return cursor.character - pos.character
+}
+export const isBeforeOrEqual = (cursor: lsp.Position, pos: lsp.Position) => comparePosition(cursor, pos) >= 0
+export const isAfterOrEqual = (cursor: lsp.Position, pos: lsp.Position) => comparePosition(cursor, pos) <= 0

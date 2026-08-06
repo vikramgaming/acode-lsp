@@ -10,8 +10,7 @@ import {
 	PluginSettings,
 	log,
 	showToast,
-	delay,
-	normalizePath
+	delay
 } from "./utils";
 import LSPMethod from "./Method/method";
 import { socketClients, SocketClients } from "./constant";
@@ -19,37 +18,31 @@ import { socketClients, SocketClients } from "./constant";
 const settings = acode.require("settings");
 const confirm = acode.require("confirm");
 const multiPrompt = acode.require("multiPrompt");
+const select = acode.require("select");
 const { editor } = editorManager;
 
 import type * as lsp from "vscode-languageserver-protocol";
 import type { LanguageClientConfig } from "@/linters/types/language-service";
 import type { LanguageProvider } from "@/linters/language-provider";
+import { Listener } from "./eventListener";
 
 export interface Session extends Ace.EditSession {
 	$modeId: string;
 }
 
-interface SessionInfo {
-	id: string;
-	fileId: string;
-	mode: string;
-	name: string;
-	uri: string;
-}
-
 export class LSP {
 	baseUrl!: string;
 	currentWorkspace: string = "";
-	currentEditor!: import("ace-code/src/editor").Editor;
+	currentEditor: Ace.Editor = editor;
 	registeredLanguage = new Map<string, string>();
-	sessionListId = new Map<string, SessionInfo>();
 	serviceCapabilities: Record<string, lsp.InitializeResult["capabilities"]> = {};
-	
+
 	method: LSPMethod;
 	client: LanguageProvider | null = null;
 	private socket: WebSocket[] = [];
 	private onStopFunctions: (() => void)[] = [];
 	private onStartFunctions: (() => void)[] = [];
+	listener: Listener;
 
 	constructor() {
 		if (!settings.value[plugin.id]) {
@@ -66,6 +59,7 @@ export class LSP {
 			settings.update();
 		}
 		this.method = new LSPMethod(this);
+		this.listener = new Listener(this);
 	}
 	set onStop(fn: () => void) {
 		this.onStopFunctions.push(fn);
@@ -98,12 +92,12 @@ export class LSP {
 			socket.addEventListener("error", (e) => {
 				log("error", `Socket unexpected error for ${config.serviceName}`, e);
 				this.stopLSP();
-			})
-			
+			});
+
 			this.socket.push(socket);
 
 			config.modes.forEach(mode => this.registeredLanguage.set(mode.toLowerCase(), config.serviceName));
-			
+
 			const result: LanguageClientConfig = {
 				modes: config.modes.join("|"),
 				serviceName: config.serviceName,
@@ -186,7 +180,6 @@ export class LSP {
 		this.client?.closeConnection?.();
 		this.client = null;
 		this.registeredLanguage.clear();
-		this.sessionListId.clear();
 		this.onStopFunctions.forEach(fn => fn());
 		log("info", "LSP Stopped");
 	}
@@ -197,105 +190,10 @@ export class LSP {
 			this.startLSP(workspacePath);
 		});
 	}
-	setSessionHandler() {
-		const addSession = (file: Acode.EditorFile) => {
-			if (
-				!file.uri ||
-				!normalizePath(file.uri, "file").startsWith(this.currentWorkspace)
-			) return;
-
-			delay(500).then(() => {
-				if (!this.client) return;
-				const session = (file.session) as Session;
-				const modeId = session.$modeId.split("/").pop()!;
-				if (!this.registeredLanguage.has(modeId)) return;
-				const sessionData: SessionInfo = {
-					id: session.id,
-					fileId: file.id,
-					mode: modeId,
-					name: file.name,
-					uri: file.uri
-				};
-				this.sessionListId.set(file.id, sessionData);
-				this.sessionListId.set(session.id, sessionData);
-
-				this.client.registerSession(session, this.currentEditor, {
-					filePath: getCurrentFilePath(file.uri),
-					joinWorkspaceURI: true
-				});
-				log("info", "Register Session:", sessionData);
-			});
-		};
-		let called = false;
-		const renameSession = (file: Acode.EditorFile) => {
-			if (
-				called ||
-				!file.uri ||
-				!normalizePath(file.uri, "file").startsWith(this.currentWorkspace) ||
-				!this.sessionListId.has(file.session.id) ||
-				!this.client
-			) return;
-			called = true;
-			
-			const session = (file.session) as Session;
-			const sessionData = this.sessionListId.get(session.id)!;
-			
-			const newSessionData = {
-					...sessionData,
-					fileId: file.id,
-					name: file.name,
-					uri: file.uri
-				};
-			this.sessionListId.delete(sessionData.fileId);
-			this.sessionListId.set(file.id, newSessionData);
-			this.sessionListId.set(session.id, newSessionData);
-			
-			this.client.registerSession(session, this.currentEditor, {
-				filePath: getCurrentFilePath(file.uri),
-				joinWorkspaceURI: true
-			});
-			log("info", "Session changed for:\n", sessionData, "\n\nto:\n", newSessionData);
-			delay(500).then(() => {
-				called = false;
-			})
-		};
-		const removeSession = (file: Acode.EditorFile) => {
-			if (
-				!file.uri ||
-				!normalizePath(file.uri, "file").startsWith(this.currentWorkspace) ||
-				!this.sessionListId.has(file.id) ||
-				!this.client
-			) return;
-
-			const sessionData = this.sessionListId.get(file.id)!;
-			const session = { id: sessionData.id } as Ace.EditSession;
-			this.client.closeDocument(session, () => {
-				log("info", "Session Closed for:", sessionData);
-			});
-
-			this.sessionListId.delete(file.id);
-			this.sessionListId.delete(session.id);
-		};
-		editorManager.files.forEach(addSession);
-		
-		this.onStart = () => {
-			log("info", "Initialize Session handler");
-			editorManager.on("new-file", addSession);
-			editorManager.on("rename-file", renameSession);
-			editorManager.on("remove-file", removeSession);
-		}
-
-		this.onStop = () => {
-			log("info", "Removing Session handler");
-			editorManager.off("new-file", addSession);
-			editorManager.off("remove-file", renameSession);
-			editorManager.off("remove-file", removeSession);
-		};
-	}
 	initStyle(url: string) {
 		const fs = acode.require("fs");
 		const dir = fs(`${url}style.css`);
-		
+
 		dir.readFile("utf-8").then(data => {
 			const style = document.createElement("style");
 			style.id = plugin.id;
@@ -311,7 +209,6 @@ export class LSP {
 	): Promise<void> {
 		this.initAllCommands();
 		this.initStyle(this.baseUrl);
-		this.setSessionHandler();
 
 		const languageFormatter: string[] = [];
 
@@ -321,15 +218,21 @@ export class LSP {
 
 		acode.registerFormatter(plugin.id, languageFormatter, async () => {
 			if (!this.client) return showToast("start LSP first");
+			if (!this.service.serviceName) return;
 
-			this.method.documentFormattingProvider();
+			this.method.documentFormattingProvider({
+				client: this.client,
+				serviceName: this.service.serviceName,
+				uri: this.method.getFileUri(),
+				selectionRange: this.method.getSelectionRange(),
+			});
 		});
 		log("info", "Registered Formatter for language", languageFormatter);
-		
+
 		LanguageClient.initializeCallback = (result, serviceName) => {
 			log("info", `Initialize for serviceName ${serviceName}`, result);
 			this.serviceCapabilities[serviceName] = result.capabilities;
-		}
+		};
 	}
 	initAllCommands() {
 		const shortcutKeys: Record<string, ReturnType<typeof normalizeShortcutKeys>> = {};
@@ -341,30 +244,54 @@ export class LSP {
 		editor.commands.addCommand({
 			name: "LSP Init",
 			bindKey: shortcutKeys.startLSP,
-			exec: () => {
-				if (this.client) {
-					return showToast("LSP already started");
+			exec: async () => {
+				const input = await select("LSP", [
+					{ text: "Start LSP", value: "start" },
+					{ text: "Stop LSP", value: "stop" },
+					{ text: "Restart LSP", value: "restart" },
+				]);
+				if (!input) return;
+
+				switch (input) {
+					case "start":
+						if (this.client) {
+							return showToast("LSP already started");
+						}
+
+						const folder = getActiveFolderPath();
+						if (!folder) {
+							log("error", "Cannot find the workspace, Please open a folder first");
+							return showToast("Please open a folder first");
+						}
+						multiPrompt("Start Websocket LSP?", [
+							{
+								type: "text",
+								id: "workspacePath",
+								value: folder,
+								placeholder: "Workspace Path",
+								required: true,
+								readOnly: true
+							}
+						], "").then(({ workspacePath }: { workspacePath: string; }) => {
+							if (workspacePath) {
+								this.startLSP(workspacePath);
+							}
+						});
+						break;
+					case "stop":
+						if (!this.client) return showToast("LSP already stop");
+						confirm("Stop LSP", "Are you sure?").then(i => {
+							if (i) this.stopLSP();
+						});
+						break;
+					case "restart":
+						if (this.currentWorkspace === "") return showToast("you have never run an LSP");
+						confirm("Restart LSP", "Are you sure?").then(i => {
+							if (i) this.restartLSP(this.currentWorkspace);
+						});
+						break;
 				}
 
-				const folder = getActiveFolderPath();
-				if (!folder) {
-					log("error", "Cannot find the workspace, Please open a folder first");
-					return showToast("Please open a folder first");
-				}
-				multiPrompt("Start Websocket LSP?", [
-					{
-						type: "text",
-						id: "workspacePath",
-						value: folder,
-						placeholder: "Workspace Path",
-						required: true,
-						readOnly: true
-					}
-				], "").then(({ workspacePath }: { workspacePath: string; }) => {
-					if (workspacePath) {
-						this.startLSP(workspacePath);
-					}
-				});
 			}
 		});
 		editor.commands.addCommand({
@@ -375,7 +302,14 @@ export class LSP {
 					log("error", "Cannot find the client");
 					return showToast("Start LSP first");
 				}
-				this.method.documentFormattingProvider();
+				if (!this.service.serviceName) return;
+
+				this.method.documentFormattingProvider({
+					client: this.client,
+					serviceName: this.service.serviceName,
+					uri: this.method.getFileUri(),
+					selectionRange: this.method.getSelectionRange(),
+				});
 			}
 		});
 		editor.commands.addCommand({
@@ -405,14 +339,6 @@ export class LSP {
 
 		return {
 			list: [
-				{
-					text: "Stop LSP",
-					key: "stopLSP",
-				},
-				{
-					text: "Restart LSP",
-					key: "restartLSP",
-				},
 				{
 					text: "Debug mode",
 					key: "debug",
@@ -453,21 +379,7 @@ export class LSP {
 				},
 			],
 			cb: (key: string, value: string | boolean) => {
-				if (key === "stopLSP") {
-					if (!this.client) return showToast("LSP not activated");
-					confirm("Stop LSP", "Are you sure?").then(i => {
-						if (i) {
-							this[key]();
-						}
-					});
-				} else if (key === "restartLSP") {
-					if (!this.client) return showToast("LSP not activated");
-					confirm("Restart LSP", "Are you sure?").then(i => {
-						if (i) {
-							this[key]();
-						}
-					});
-				} else if (key.startsWith("shortcut.")) {
+				if (key.startsWith("shortcut.")) {
 					const shortcut = key.replace("shortcut.", "");
 					setPluginSettings((settings): Partial<PluginSettings> => {
 						log("info", `Shortcut changed for [${shortcut}] from "${(settings as any)[shortcut]}" to "${value}"`);
