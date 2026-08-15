@@ -36,6 +36,7 @@ export class LSP {
 	currentEditor: Ace.Editor = editor;
 	registeredLanguage = new Map<string, string>();
 	serviceCapabilities: Record<string, lsp.InitializeResult["capabilities"]> = {};
+	private style!: HTMLStyleElement;
 
 	method: LSPMethod;
 	client: LanguageProvider | null = null;
@@ -195,10 +196,10 @@ export class LSP {
 		const dir = fs(`${url}style.css`);
 
 		dir.readFile("utf-8").then(data => {
-			const style = document.createElement("style");
-			style.id = plugin.id;
-			style.textContent = data.replace(/\.plugin/g, `.${plugin.className}`);
-			document.head.appendChild(style);
+			this.style = document.createElement("style");
+			this.style.id = plugin.id;
+			this.style.textContent = data.replace(/\.plugin/g, `.${plugin.className}`);
+			document.head.appendChild(this.style);
 		});
 	}
 
@@ -331,6 +332,7 @@ export class LSP {
 			this.stopLSP();
 		}
 		this.removeAllCommands();
+		this.style.remove();
 		delete settings.value[plugin.id];
 		settings.update();
 	}

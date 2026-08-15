@@ -24,7 +24,7 @@
     "esbuild": "^0.28.1",
     "esbuild-sass-plugin": "^3.7.0",
     "jszip": "^3.10.1",
-    "sass": "^1.101.7",
+    "sass": "^1.102.0",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3"
   },
