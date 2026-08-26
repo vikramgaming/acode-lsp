@@ -1,13 +1,14 @@
 import type * as lsp from "vscode-languageserver-protocol";
 import { delay, goToFile, createPage } from "../utils";
 import type Method from "../Method/method";
+import type { Listener } from "src/eventListener";
 
 export default class UIMethodPage {
 	page: Acode.WCPage;
 	sideBtn;
 	method: Method;
 
-	constructor(method: Method) {
+	constructor(method: Method, listener: Listener) {
 		this.method = method;
 		this.page = createPage("LSP Method");
 		const sidebutton = acode.require("sidebutton");
@@ -18,7 +19,7 @@ export default class UIMethodPage {
 			textColor: "black",
 			onclick: () => this.page.show()
 		});
-		this.sideBtn.show();
+		listener.addEventListener("toggle", (isActive) => this.sideBtn[isActive ? "show" : "hide"]())
 	}
 	get workspaceUri() {
 		return this.method.workspaceUri;

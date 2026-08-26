@@ -102,7 +102,8 @@ export abstract class BaseService<OptionsType extends ServiceOptions = ServiceOp
 				dynamicRegistration: false
 			},
 			documentSymbol: {
-				dynamicRegistration: false
+				dynamicRegistration: false,
+				hierarchicalDocumentSymbolSupport: true
 			},
 			rename: {
 				dynamicRegistration: false

@@ -81,10 +81,10 @@
 		z-index: 2000;
 		position: absolute;
 		&.highlight {
-			border: .5px solid white;
+			border: .5px solid #fff;
 		}
 		&.link {
-			text-decoration: underline;
+			border-bottom: 1.5px solid #9905b0;
 		}
 	}
 }

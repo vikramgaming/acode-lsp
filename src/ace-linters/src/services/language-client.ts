@@ -1,6 +1,5 @@
 import * as rpc from 'vscode-ws-jsonrpc';
 import * as lsp from "vscode-languageserver-protocol";
-import { log } from "../../../utils";
 import {
     BrowserMessageReader,
     BrowserMessageWriter,

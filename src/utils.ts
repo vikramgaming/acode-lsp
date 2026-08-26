@@ -216,5 +216,9 @@ export function comparePosition(cursor: lsp.Position, pos: lsp.Position) {
 	}
 	return cursor.character - pos.character
 }
-export const isBeforeOrEqual = (cursor: lsp.Position, pos: lsp.Position) => comparePosition(cursor, pos) >= 0
-export const isAfterOrEqual = (cursor: lsp.Position, pos: lsp.Position) => comparePosition(cursor, pos) <= 0
+export const isBeforeOrEqual = (a: lsp.Position, b: lsp.Position) => comparePosition(a, b) <= 0
+export const isAfterOrEqual = (a: lsp.Position, b: lsp.Position) => comparePosition(a, b) >= 0
+export const isInside = (inner: lsp.Position | lsp.Range, outer: lsp.Range) => {
+    return isAfterOrEqual("start" in inner ? inner.start : inner, outer.start) &&
+           isBeforeOrEqual("end" in inner ? inner.end : inner, outer.end)
+}

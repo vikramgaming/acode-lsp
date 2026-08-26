@@ -41,8 +41,6 @@ export class LSP {
 	method: LSPMethod;
 	client: LanguageProvider | null = null;
 	private socket: WebSocket[] = [];
-	private onStopFunctions: (() => void)[] = [];
-	private onStartFunctions: (() => void)[] = [];
 	listener: Listener;
 
 	constructor() {
@@ -59,14 +57,8 @@ export class LSP {
 			} satisfies PluginSettings;
 			settings.update();
 		}
-		this.method = new LSPMethod(this);
 		this.listener = new Listener(this);
-	}
-	set onStop(fn: () => void) {
-		this.onStopFunctions.push(fn);
-	}
-	set onStart(fn: () => void) {
-		this.onStartFunctions.push(fn);
+		this.method = new LSPMethod(this);
 	}
 	get service() {
 		const mode = (editor.session as Session).$modeId.replace("ace/mode/", "");
@@ -168,7 +160,8 @@ export class LSP {
 
 		this.currentEditor = editor;
 		editor.completers = editor.completers.filter(c => c.id != null && c.id !== "keywordCompleter");
-		this.onStartFunctions.forEach(fn => fn());
+		this.listener.emit("startLSP");
+		this.listener.emit("toggle", true);
 	}
 	stopLSP() {
 		if (!this.client) return;
@@ -181,7 +174,8 @@ export class LSP {
 		this.client?.closeConnection?.();
 		this.client = null;
 		this.registeredLanguage.clear();
-		this.onStopFunctions.forEach(fn => fn());
+		this.listener.emit("stopLSP");
+		this.listener.emit("toggle", false);
 		log("info", "LSP Stopped");
 	}
 	restartLSP(workspacePath = this.currentWorkspace) {

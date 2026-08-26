@@ -11,12 +11,18 @@ interface SessionInfo {
 }
 
 type Event = {
+    startLSP: () => void;
+    stopLSP: () => void;
+    toggle: (isActive: boolean) => void;
 	createSession: (sessionInfo: SessionInfo, file: Acode.EditorFile) => void;
 	renameSession: (sessionInfo: SessionInfo, file: Acode.EditorFile) => void;
+	changeSession: (sessionInfo: SessionInfo, file: Acode.EditorFile) => void;
 	removeSession: (sessionInfo: SessionInfo, file: Acode.EditorFile) => void;
 	change: (emitter: Ace.Editor, delta: Ace.Delta) => void;
 	changeSelection: (emitter: Ace.Editor) => void;
 };
+
+const { editor } = editorManager;
 
 export class Listener {
 	private sessionListId = new Map<string, SessionInfo>();
@@ -28,25 +34,25 @@ export class Listener {
 	constructor(lsp: LSP) {
 		this.lsp = lsp;
 
-		lsp.onStart = () => {
+		this.addEventListener("startLSP", () => {
 			log("info", "Initialize Session handler");
 			editorManager.files.forEach(this.createSession);
 			editorManager.on("new-file", this.createSession);
 			editorManager.on("rename-file", this.renameSession);
 			editorManager.on("remove-file", this.removeSession);
-			// editorManager.editor.on("change", this.change);
-			// editorManager.editor.on("changeSelection", this.changeSelection);
-		};
+			editor.on("change", this.change);
+			editor.on("changeSelection", this.changeSelection);
+		});
 
-		lsp.onStop = () => {
+		this.addEventListener("stopLSP", () => {
 			log("info", "Removing Session handler");
 			editorManager.off("new-file", this.createSession);
 			editorManager.off("remove-file", this.renameSession);
 			editorManager.off("remove-file", this.removeSession);
-			// editorManager.editor.off("change", this.change);
-			// editorManager.editor.off("changeSelection", this.changeSelection);
+			editor.off("change", this.change);
+			editor.off("changeSelection", this.changeSelection);
 			this.sessionListId.clear();
-		};
+		});
 	}
 	private get client() {
 		return this.lsp.client;
@@ -147,7 +153,12 @@ export class Listener {
 			this.emit("renameSession", newSessionData, file);
 		})
 	});
-
+    private changeSession = ({ session }: { session: EditSession }) => {
+        const sessionInfo = this.sessionListId.get(session.id);
+        const file = editorManager.files.find(file => file.session.id === session.id);
+        if (!sessionInfo || !file) return;
+        this.emit("changeSession", sessionInfo, file);
+    }
 	private removeSession = (file: Acode.EditorFile) => {
 		if (
 			!file.uri ||
@@ -167,9 +178,9 @@ export class Listener {
 		this.emit("removeSession", sessionData, file);
 	};
 	private change = debounce((delta: Ace.Delta, emitter: Ace.Editor) => {
-		this.emit("change", emitter, delta);
+		if (this.sessionListId.has(emitter.session.id) && editor.session.id === emitter.session.id) this.emit("change", emitter, delta);
 	}, 500)
 	private changeSelection = debounce((_e: undefined, emitter: Ace.Editor) => {
-		this.emit("changeSelection", emitter);
+		if (this.sessionListId.has(emitter.session.id) && editor.session.id === emitter.session.id) this.emit("changeSelection", emitter);
 	}, 500)
 }
